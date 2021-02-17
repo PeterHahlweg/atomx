@@ -1,0 +1,15 @@
+[package]
+name = "atomx"
+version = "0.1.0"
+authors = ["Peter Hahlweg <peter.github@mailbox.org>"]
+edition = "2018"
+license = "Apache-2.0 OR MIT"
+homepage = "https://crates.io"
+repository = "https://github.com/PeterHahlweg/atomx"
+keywords = ["parallel", "thread", "concurrency", "atomic"]
+categories = ["concurrency"]
+readme = "README.md"
+description = "Thread safe data structures based on atomic data types."
+
+
+[dependencies]
