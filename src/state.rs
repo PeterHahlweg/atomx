@@ -9,13 +9,14 @@ use std::collections::HashMap;
  *      
  */
 
-struct StateMachine {
+struct StateMachine 
+{
     signal: StateSignal, 
     states: Vec<(u32, Option<Arc<StateSignal>>)>
 }
 
-impl StateMachine {
-    
+impl StateMachine
+{
     pub fn new() -> Self {
         StateMachine {
             signal: StateSignal::default(),
@@ -30,14 +31,18 @@ impl StateMachine {
         }
     }
 
-    pub fn from_map(map: &[(u32, u32)]) -> StateMachine {
+    pub fn from_map<S>(map: &[(S, S)]) -> StateMachine where S: Clone + Into<u32> {
         let mut sm = StateMachine::new();
+        sm.states.resize(map.len(), State::default());
+
         for value in map {
-            let max = std::cmp::max(value.0, value.1);
+            let state: u32 = value.0.clone().into();
+            let next: u32  = value.1.clone().into();
+            let max = std::cmp::max(state, next);
             if sm.states.len() < max as usize {
                 sm.states.resize((max+1) as usize, (0,None));
             }
-            sm.states[value.0 as usize] = (value.1, Some(Arc::new(StateSignal::new(0))));
+            sm.states[state as usize] = (next, Some(Arc::new(StateSignal::new(0))));
         }
         sm
     }
