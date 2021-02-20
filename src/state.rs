@@ -1,18 +1,31 @@
 use super::signal::*;
 use std::sync::Arc;
-use std::collections::HashMap;
 
 /* TODO:
- *      - add a test for from_map
- *      - add default stop state, for initialization
- *      - maybe turn states into an array, if if generic const feature is available
- *      
+ *      - integrate new state struct
+ *      - create connect function
+ *
  */
 
-struct StateMachine 
+ struct State {
+    value: u32,
+    signal: Option<Arc<StateSignal>>,
+    condition: u32, // compare this to signal, to decide if go next or stay at state
+ }
+
+pub struct StateMachine
 {
-    signal: StateSignal, 
-    states: Vec<(u32, Option<Arc<StateSignal>>)>
+    signal: StateSignal,
+    states: Vec<(u32, Option<Arc<StateSignal>>)>,
+    stop: u32,
+}
+
+pub struct Unstoppable(StateMachine);
+impl Unstoppable {
+    pub fn stops_at<S>(mut self, state: S) -> StateMachine where S: Clone + Into<u32> {
+        self.0.stop = state.into();
+        self.0
+    }
 }
 
 impl StateMachine
@@ -21,17 +34,11 @@ impl StateMachine
         StateMachine {
             signal: StateSignal::default(),
             states: vec![],
+            stop: 0,
         }
     }
 
-    pub fn with_capacity(c: usize) -> Self {
-        StateMachine {
-            signal: StateSignal::default(),
-            states: Vec::with_capacity(c),
-        }
-    }
-
-    pub fn from_map<S>(map: &[(S, S)]) -> StateMachine where S: Clone + Into<u32> {
+    pub fn from<S>(map: &[(S, S)]) -> Unstoppable where S: Clone + Into<u32> {
         let mut sm = StateMachine::new();
         sm.states.resize(map.len(), State::default());
 
@@ -44,7 +51,7 @@ impl StateMachine
             }
             sm.states[state as usize] = (next, Some(Arc::new(StateSignal::new(0))));
         }
-        sm
+        Unstoppable(sm)
     }
 
     pub fn state(&self) -> u32 {
@@ -52,30 +59,58 @@ impl StateMachine
     }
 
     pub fn next(&self, state: u32) -> u32 {
-        let next = self.states[state as usize].0; 
-        self.signal.set(next);
-        next
+        if (state as usize) < self.states.len() {
+            let next = &self.states[state as usize];
+            match &next.1 {
+                Some(_signal) => {
+                    // check here at which condition we go next or stay at state
+                    // this depends on a signal that is driven by another state machine
+                    self.stop // workaround
+                }
+                None => {
+                    self.signal.set(next.0);
+                    next.0
+                }
+            }
+        }
+        else {
+            self.stop
+        }
     }
 
     pub fn state_count(&self) -> usize {
         self.states.len()
     }
-    
+
+}
+
+impl Default for StateMachine {
+    fn default() -> Self {
+        StateMachine::new()
+    }
 }
 
 mod unittest {
 
-    use super::*;
+    use super::StateMachine;
 
     #[test]
-    fn from_map() {
-        let map = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
-        let sm = StateMachine::from_map(&map);
-        
-        for i in 0..sm.state_count() {
-            let next = sm.next(map[i].0);
-            //println!("i: {}, next: {}, map[i].0: {}, .1: {}", i, next, map[i].0, map[i].1);
-            assert_eq!(map[i].1, next)
+    fn from() {
+        let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
+        let sm = StateMachine::from(&map).stops_at(0u32);
+
+        for val in &map {
+            let next = sm.next(val.0);
+            println!("next: {}, val.0: {}, .1: {}", next, val.0, val.1);
+            assert_eq!(val.1, next)
         }
+    }
+
+    #[test]
+    fn state_out_of_bound() {
+        let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
+        let stop: u32 = 22;
+        let sm = StateMachine::from(&map).stops_at(stop);
+        assert_eq!(sm.next(99), stop);
     }
 }
