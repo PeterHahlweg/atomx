@@ -32,14 +32,6 @@ pub struct StateMachine
     stop: u32,
 }
 
-pub struct Unstoppable(StateMachine);
-impl Unstoppable {
-    pub fn stops_at<S>(mut self, state: S) -> StateMachine where S: Clone + Into<u32> {
-        self.0.stop = state.into();
-        self.0
-    }
-}
-
 impl StateMachine
 {
     pub fn new() -> Self {
@@ -50,21 +42,23 @@ impl StateMachine
         }
     }
 
-    pub fn from<S>(map: &[(S, S)]) -> Unstoppable
+    pub fn from<S>(map: &[(S, S)], stop: S) -> StateMachine
     where S: Clone + Into<u32> {
         let mut sm = StateMachine::new();
-        sm.states.resize(map.len(), State::default());
+        sm.stop = stop.into();
+        let default_state = State{value: sm.stop, signal: None, condition: 0, redirect: 0};
+        sm.states.resize(map.len(), default_state.clone());
 
         for value in map {
             let state: u32 = value.0.clone().into();
             let next: u32  = value.1.clone().into();
-            let max = std::cmp::max(state, next);
-            if sm.states.len() < max as usize {
-                sm.states.resize((max+1) as usize, State::default());
+            let max = std::cmp::max(state, next) as usize;
+            if sm.states.len() < max {
+                sm.states.resize(max+1, default_state.clone());
             }
-            sm.states[state as usize] = State{value: next, signal:None, condition: 0, redirect: 0};
+            sm.states[state as usize] = State{value: next, signal: None, condition: 0, redirect: 0};
         }
-        Unstoppable(sm)
+        sm
     }
 
     pub fn state(&self) -> u32 {
@@ -127,7 +121,7 @@ mod unittest {
     #[test]
     fn from() {
         let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
-        let sm = super::StateMachine::from(&map).stops_at(0u32);
+        let sm = super::StateMachine::from(&map, 0);
 
         for val in &map {
             let mut state = val.0;
@@ -141,8 +135,20 @@ mod unittest {
     fn state_out_of_bound() {
         let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
         let stop: u32 = 22;
-        let sm = super::StateMachine::from(&map).stops_at(stop);
-        let mut state = 99_u32;
+        let sm = super::StateMachine::from(&map, stop);
+
+        // off by one
+        let mut state: u32= 5;
+        sm.next(&mut state);
+        assert_eq!(state, stop);
+
+        // the max state given from transitions map
+        state = 4;
+        sm.next(&mut state);
+        assert_eq!(state, 3);
+
+        // obviously out of bound
+        state = 99;
         sm.next(&mut state);
         assert_eq!(state, stop);
     }
@@ -151,19 +157,25 @@ mod unittest {
     fn stop_state() {
         let map: [(u32,u32); 2] = [ (0,4), (4,3) ];
         let stop: u32 = 22;
-        let sm = super::StateMachine::from(&map).stops_at(stop);
-        let mut state = 99_u32;
+        let sm = super::StateMachine::from(&map, stop);
+
+        // giving the stop state
+        let mut state = stop;
         sm.next(&mut state);
         assert_eq!(state, stop);
-        todo!("same as state out of bound")
+
+        // given a state without a defined transition to another state
+        state = 3;
+        sm.next(&mut state);
+        assert_eq!(state, stop);
     }
 
     #[test]
     fn connect() {
         let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
         let stop: u32 = 22;
-        let mut sma = super::StateMachine::from(&map).stops_at(stop);
-        let smb = super::StateMachine::from(&map).stops_at(stop);
+        let mut sma = super::StateMachine::from(&map, stop);
+        let smb = super::StateMachine::from(&map, stop);
 
         sma.connect(3_u32, &smb, 1_u32, 0_u32);
         let mut state: u32 = 3;

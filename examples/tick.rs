@@ -69,8 +69,8 @@ fn main() {
     ];
 
     // Create some state machines from the transitions, and define the stop state for each.
-    let mut sm1 = StateMachine::from(&transitions).stops_at(Stop);
-    let mut sm2 = StateMachine::from(&transitions).stops_at(Stop);
+    let mut sm1 = StateMachine::from(&transitions, Stop);
+    let mut sm2 = StateMachine::from(&transitions, Stop);
 
     // This is the counter we share between the threads.
     let c1 = CountSignal::default().into_arc();

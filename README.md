@@ -3,10 +3,10 @@
 
 # Atomx
 
-A collection of concurrent data structures, build on top of atomic types.
+A collection of concurrent data structures, build on top of atomic types.\
 __This is experimental and not ready for production.__
 
-The main reason why this crate exists is the state machine type. It provides the ability to create interconnected state machines which can run on different threads. There is no guaranty that this approach is efficient, but it provides a mechanism to synchronize threads without a lot of memory overhead. State machines are also well known, easy to understand, and reliable.
+The main reason why this crate exists is the state machine type. It provides the ability to create interconnected state machines which can run on different threads. There is no guaranty that this approach is efficient, but it provides a mechanism to synchronize threads without a lot of memory overhead. State machines are also well known, easy to understand, and reliable.\
 This state machine implementation is based on the signal types, the base building blocks for this crate. They wrap atomic types to be practical and hiding some complexity.
 
 ## Example - Connecting State Machines
@@ -27,8 +27,8 @@ impl From<u32> for TickState { ... }
 let transitions = [(Tick, Wait), (Wait, Tick)];
 
 // Create some state machines from the transitions, and define the stop state for each.
-let mut sm1 = StateMachine::from(&transitions).stops_at(Stop);
-let mut sm2 = StateMachine::from(&transitions).stops_at(Stop);
+let mut sm1 = StateMachine::from(&transitions, Stop);
+let mut sm2 = StateMachine::from(&transitions, Stop);
 
 // The connection of two state machines is not complicated, but not easily readable at the moment.
 // So, how to read this thing?
