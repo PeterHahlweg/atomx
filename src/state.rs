@@ -121,27 +121,51 @@ impl Default for StateMachine {
 
 mod unittest {
 
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    enum TestState{ A, B, C, D, E, Stop}
+
+    impl From<TestState> for u32 {
+        fn from(ts: TestState) -> Self {
+            ts as u32
+        }
+    }
+
+    impl From<u32> for TestState {
+        fn from(x: u32) -> Self {
+            use TestState::*;
+            match x {
+                0 => A,
+                1 => B,
+                2 => C,
+                3 => D,
+                4 => E,
+                _ => Stop,
+            }
+        }
+    }
+
     #[test]
     fn from() {
-        let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
-        let sm = super::StateMachine::from(&map, 0);
+        use TestState::*;
+        let map: [_; 5] = [(A,E), (E,D), (D,C), (C,B), (B,A)];
+        let sm = super::StateMachine::from(&map, A);
 
         for val in &map {
             let mut state = val.0;
             sm.next(&mut state);
-            println!("next: {}, val.0: {}, .1: {}", state, val.0, val.1);
-            assert_eq!(val.1, state)
+            println!("next: {:?}, val.0: {:?}, .1: {:?}", state, val.0, val.1);
+            assert_eq!(val.1, state);
         }
     }
 
     #[test]
     fn state_out_of_bound() {
-        let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
+        let map: [(u32,u32); 5] = [(0,4), (4,3), (3,2), (2,1), (1,0)];
         let stop: u32 = 22;
         let sm = super::StateMachine::from(&map, stop);
 
         // off by one
-        let mut state: u32= 5;
+        let mut state: u32 = 5;
         sm.next(&mut state);
         assert_eq!(state, stop);
 
@@ -158,37 +182,52 @@ mod unittest {
 
     #[test]
     fn stop_state() {
-        let map: [(u32,u32); 2] = [ (0,4), (4,3) ];
-        let stop: u32 = 22;
-        let sm = super::StateMachine::from(&map, stop);
+        use TestState::*;
+        let map: [_; 2] = [(A,E), (E,D)];
+        let sm = super::StateMachine::from(&map, Stop);
 
         // giving the stop state
-        let mut state = stop;
+        let mut state = Stop;
         sm.next(&mut state);
-        assert_eq!(state, stop);
+        assert_eq!(state, Stop);
 
         // given a state without a defined transition to another state
-        state = 3;
+        state = D;
         sm.next(&mut state);
-        assert_eq!(state, stop);
+        assert_eq!(state, Stop);
     }
 
     #[test]
     fn connect() {
-        let map: [(u32,u32); 5] = [ (0,4), (4,3), (3,2), (2,1), (1,0) ];
-        let stop: u32 = 22;
-        let mut sma = super::StateMachine::from(&map, stop);
-        let smb = super::StateMachine::from(&map, stop);
+        use TestState::*;
+        let map: [_; 5] = [(A,E), (E,D), (D,C), (C,B), (B,A)];
+        let mut sma = super::StateMachine::from(&map, Stop);
+        let smb = super::StateMachine::from(&map, Stop);
 
-        sma.connect(3_u32, &smb, 1_u32, 0_u32);
-        let mut state: u32 = 3;
-        sma.next(&mut state); // next from state 3, but smb is not in state 1
-        assert_eq!(state, 0);
-        state = 2;
-        smb.next(&mut state); // bring smb into state 1
-        assert_eq!(state, 1);
-        state = 3;
-        smb.next(&mut state); // next from state 3 is 2 as expected, because smb is in state 1
-        assert_eq!(state, 2);
+        sma.connect(D, &smb, B, A);
+        let mut state = D;
+        sma.next(&mut state); // next from state D, but smb is not in state B
+        assert_eq!(state, A); // so we expect A
+
+        // bring smb into state B
+        state = C;
+        smb.next(&mut state);
+        assert_eq!(state, B);
+
+        // next from state D is C as expected, because smb is in state B
+        state = D;
+        smb.next(&mut state);
+        assert_eq!(state, C);
+    }
+
+    #[test]
+    fn state() {
+        use TestState::*;
+        let map: [_; 5] = [(A,E), (E,D), (D,C), (C,B), (B,A)];
+        let sma = super::StateMachine::from(&map, Stop);
+        let mut state = C;
+        sma.next(&mut state);
+        state = sma.state();
+        assert_eq!(state, B);
     }
 }
