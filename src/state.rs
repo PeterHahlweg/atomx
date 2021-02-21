@@ -43,7 +43,8 @@ impl StateMachine
     }
 
     pub fn from<S>(map: &[(S, S)], stop: S) -> StateMachine
-    where S: Clone + Into<u32> {
+    where S: Clone + Into<u32>
+    {
         let mut sm = StateMachine::new();
         sm.stop = stop.into();
         let default_state = State{value: sm.stop, signal: None, condition: 0, redirect: 0};
@@ -61,8 +62,10 @@ impl StateMachine
         sm
     }
 
-    pub fn state(&self) -> u32 {
-        self.signal.state()
+    pub fn state<S>(&self) -> S
+    where S: From<u32> + Clone
+    {
+        self.signal.state().into()
     }
 
     pub fn next<S>(&self, state: &mut S) -> S
