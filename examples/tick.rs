@@ -6,7 +6,8 @@
 /// What you will see is that two threads counting up in alternating order.
 
 use atomx::*;
-use std::thread;
+use std::{sync::atomic::AtomicUsize, thread, thread::sleep};
+use std::sync::atomic::Ordering::SeqCst;
 use std::time::Duration;
 use TickState::*;
 
@@ -21,7 +22,8 @@ enum TickState {
 
 // Provide conversions from state to u32 and vice versa.
 // This is important as the states are represented as u32 types internally.
-// You can also be creative here with macros and/or mapping multidimensional inputs.
+// You can also get creative with macros (FromPremitive trait could save some work)
+// or map multidimensional inputs.
 
 impl From<TickState> for u32 {
     fn from(ts: TickState) -> Self {
@@ -39,26 +41,40 @@ impl From<u32> for TickState {
     }
 }
 
+static THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
 // Define what happens at which state.
 
 fn run(machine: StateMachine, counter: CountSignal) {
     let limit = 30;
     let mut state = Tick; // the state we start from, usually Init or something similar
 
+    let thread_id = THREAD_COUNT.load(SeqCst) as u32;
+    let thread_count = 2;
+    THREAD_COUNT.store(thread_id as usize +1, SeqCst);
+    while thread_count != THREAD_COUNT.load(SeqCst) as u32 {sleep(Duration::from_millis(1));};
+
     loop {
         match machine.next(&mut state) { // this sets the next state for you, based on the transitions
             Tick => {
-                let c = counter.incr()+1;
-                println!("{:?}: tick, {:?}", std::thread::current().id(), c);
+                if counter.probe() % thread_count != thread_id {
+                    println!("T{:?}: {:?}", thread_id, counter.incr())
+                }
+                else {
+                    state = Wait
+                }
+
             },
             Wait => {
-                thread::sleep(Duration::from_secs(1));
+                if thread_id == 1 {
+                    sleep(Duration::from_millis(100))
+                }
                 if counter.probe() >= limit {
                     state = Stop // manually change state transition, if necessary
                 }
             },
             Stop => return
-        };
+        }
     }
 }
 
@@ -88,7 +104,7 @@ fn main() {
     );
     sm2.connect(Tick, &sm1, Wait, Wait);
 
-    // Put the state machines on threads
+    // Run the state machines on threads
     let t1 = thread::spawn(|| run(sm1, c1) );
     let t2 = thread::spawn(|| run(sm2, c2) );
 
