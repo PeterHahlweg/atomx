@@ -6,9 +6,11 @@
 /// What you will see is that two threads counting up in alternating order.
 
 use atomx::*;
-use std::{sync::Arc, thread};
+use std::thread;
 use std::time::Duration;
 use TickState::*;
+
+type CountSignal = SignalU32;
 
 // First define your states.
 
@@ -39,7 +41,7 @@ impl From<u32> for TickState {
 
 // Define what happens at which state.
 
-fn run(machine: StateMachine, counter: Arc<CountSignal>) {
+fn run(machine: StateMachine, counter: CountSignal) {
     let limit = 30;
     let mut state = Tick; // the state we start from, usually Init or something similar
 
@@ -51,8 +53,8 @@ fn run(machine: StateMachine, counter: Arc<CountSignal>) {
             },
             Wait => {
                 thread::sleep(Duration::from_secs(1));
-                if counter.state() >= limit {
-                    state = Stop // manually change state transition, if necessary (be careful)
+                if counter.probe() >= limit {
+                    state = Stop // manually change state transition, if necessary
                 }
             },
             Stop => return
@@ -73,7 +75,7 @@ fn main() {
     let mut sm2 = StateMachine::from(&transitions, Stop);
 
     // This is the counter we share between the threads.
-    let c1 = CountSignal::default().into_arc();
+    let c1 = CountSignal::default();
     let c2 = c1.clone();
 
     // The connection of two state machines is not complicated, but not easily readable at the moment.

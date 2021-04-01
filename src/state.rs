@@ -1,14 +1,16 @@
 use super::signal::*;
-use std::sync::Arc;
 
-/* TODO:
- *      - improve connect api
- */
+// State Signal
+type Signal = SignalU32;
+
+/// TODO:
+///     - improve connect api
+///     - improve documentation
 
  #[derive(Clone, Debug)]
  struct State {
     value: u32,
-    signal: Option<Arc<StateSignal>>,
+    signal: Option<Signal>,
     condition: u32, // compare this to signal, to decide if go next or stay at state
     redirect: u32, // next state if the signal is not equal to condition
  }
@@ -27,7 +29,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct StateMachine
 {
-    signal: Arc<StateSignal>,
+    signal: Signal,
     states: Vec<State>,
     stop: u32,
 }
@@ -36,7 +38,7 @@ impl StateMachine
 {
     pub fn new() -> Self {
         StateMachine {
-            signal: Arc::new(StateSignal::default()),
+            signal: Signal::default(),
             states: vec![],
             stop: 0,
         }
@@ -65,7 +67,7 @@ impl StateMachine
     pub fn state<S>(&self) -> S
     where S: From<u32> + Clone
     {
-        self.signal.state().into()
+        self.signal.probe().into()
     }
 
     pub fn next<S>(&self, state: &mut S) -> S
@@ -76,7 +78,7 @@ impl StateMachine
             let next = &self.states[idx];
             match &next.signal {
                 Some(signal) => {
-                    if signal.state() == next.condition {
+                    if signal.probe() == next.condition {
                         next.value
                     }
                     else {
@@ -91,7 +93,7 @@ impl StateMachine
         else {
             self.stop
         };
-        self.signal.set(next);
+        self.signal.emit(next);
         let next: S = next.into();
         *state = next.clone();
         next

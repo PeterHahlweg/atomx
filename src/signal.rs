@@ -1,14 +1,9 @@
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 use std::{sync::atomic::{ AtomicBool, Ordering::*, AtomicU32 }};
 
-
-pub trait Signal<T> {
-    fn state(&self) -> T;
-    fn into_arc(self) -> Arc<Self>;
-}
-
-pub trait SignalEmitter<T> {
-    fn set(&self, val: T);
+pub trait SignalAccess<T> {
+    fn probe(&self) -> T;
+    fn emit(&self, val: T);
 }
 
 // Boolean Signal
@@ -26,88 +21,88 @@ impl BooleanSignal {
     }
 
     pub fn is_true(&self) -> bool {
-        true == self.state.load(Acquire)
-    }
-
-    pub fn is_false(&self) -> bool {
-        false == self.state.load(Acquire)
-    }
-}
-
-impl Signal<bool> for BooleanSignal {
-
-    fn state(&self) -> bool {
         self.state.load(Acquire)
     }
 
-    fn into_arc(self) -> Arc<BooleanSignal> {
-        Arc::new(self)
+    pub fn is_false(&self) -> bool {
+        ! self.state.load(Acquire)
     }
 }
 
-impl SignalEmitter<bool> for BooleanSignal {
-    fn set(&self, val: bool) {
+impl SignalAccess<bool> for BooleanSignal {
+    fn probe(&self) -> bool {
+        self.state.load(Acquire)
+    }
+
+    fn emit(&self, val: bool) {
         self.state.store(val, Release);
     }
-
 }
 
-// State Signal
-pub type StateSignal = U32Signal;
-pub type CountSignal = U32Signal;
-
 #[derive(Debug)]
-pub struct U32Signal {
+pub struct RawSignalU32 {
     pub (crate) state: AtomicU32
 }
 
-impl Eq for U32Signal {}
+impl Eq for RawSignalU32 {}
 
-impl PartialEq for U32Signal {
+impl PartialEq for RawSignalU32 {
     fn eq(&self, other: &Self) -> bool {
-        self.state() == other.state()
+        self.probe() == other.probe()
     }
 }
 
-impl Default for U32Signal {
-    
+impl Default for RawSignalU32 {
     fn default() -> Self {
-        U32Signal {
-            state: AtomicU32::new(0) 
+        RawSignalU32 {
+            state: AtomicU32::new(0)
         }
     }
 }
 
-impl U32Signal {
+impl RawSignalU32 {
     pub fn new(val: u32) -> Self {
-        U32Signal {
+        RawSignalU32 {
             state: AtomicU32::new(val)
         }
     }
 
     pub fn incr(&self) -> u32 {
-        self.state.fetch_add(1, SeqCst)
+        self.state.fetch_add(1, SeqCst) +1
     }
 
     pub fn decr(&self) -> u32 {
-        self.state.fetch_sub(1, SeqCst)
+        self.state.fetch_sub(1, SeqCst) -1
     }
 }
 
-impl Signal<u32> for U32Signal {
+impl SignalAccess<u32> for RawSignalU32 {
 
-    fn state(&self) -> u32 {
+    fn probe(&self) -> u32 {
         self.state.load(Acquire)
     }
 
-    fn into_arc(self) -> Arc<Self> {
-        Arc::new(self)
-    }
-}
-
-impl SignalEmitter<u32> for U32Signal {
-    fn set(&self, val: u32) {
+    fn emit(&self, val: u32) {
         self.state.store(val, Release);
     }
 
+}
+
+#[derive(Clone, Debug)]
+pub struct SignalU32 { arc: Arc<RawSignalU32> }
+
+impl Default for SignalU32 {
+    fn default() -> Self {
+        SignalU32 {
+            arc: Arc::new(RawSignalU32::default())
+        }
+    }
+}
+
+impl Deref for SignalU32 {
+    type Target = RawSignalU32;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.arc
+    }
 }
