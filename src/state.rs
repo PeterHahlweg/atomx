@@ -8,13 +8,9 @@ type Signal = SignalU32;
 ///     - improve documentation
 
 #[derive(Clone, Debug)]
-pub struct Dependency<S> {
+pub struct Dependency {
     signal: Signal,
     state: u16,
-
-    /// detour is not a real part of the dependency, as it is not defined by the sm we depend on
-    /// but it only matters if there is a dependency, so it is defined here
-    detour: S,
 }
 
 
@@ -32,7 +28,8 @@ pub struct Transition<S,E> {
     pub state: S,
     pub event: E,
     pub next:  S,
-    pub dependency: Option<Dependency<S>>
+    pub detour: S,
+    pub dependency: Option<Dependency>
 }
 
 impl<S,E> Default for Transition<S,E>
@@ -44,6 +41,7 @@ where   S: Into<u16> + From<u16> + Copy + Default,
             state: S::default(),
             event: E::default(),
             next: S::default(),
+            detour: S::default(),
             dependency: None,
         }
     }
@@ -94,7 +92,7 @@ where   S: Into<u16> + Copy + Default,
         let mut next = transition.next;
         if let Some(dependency) = &transition.dependency {
             if dependency.signal.probe() as u16 != dependency.state {
-                next = dependency.detour
+                next = transition.detour
             }
         }
         self.signal.emit(next.into() as u32);
