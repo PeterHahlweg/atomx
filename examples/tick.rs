@@ -6,89 +6,61 @@
 /// What you will see is that two threads counting up in alternating order.
 
 use atomx::*;
-use std::{sync::atomic::AtomicUsize, thread, thread::sleep};
-use std::sync::atomic::Ordering::SeqCst;
+use atomx::SignalU32 as CountSignal;
+use std::{thread, thread::sleep};
 use std::time::Duration;
-use TickState::*;
 
-type CountSignal = SignalU32;
+states!(Tick, Wait, Stop);
+events!(Init, Even, Odd, Limit);
 
-// First define your states.
+transitions!( SM1:
+    Stop, Init  => Wait
+    Tick, Even  => Wait
+    Wait, Odd   => Tick
+    Wait, Limit => Stop
+);
 
-#[derive(Clone, Copy, Debug)]
-enum TickState {
-    Tick, Wait, Stop
-}
-
-// Provide conversions from state to u32 and vice versa.
-// This is important as the states are represented as u32 types internally.
-// You can also get creative with macros (FromPremitive trait could save some work)
-// or map multidimensional inputs.
-
-impl From<TickState> for u32 {
-    fn from(ts: TickState) -> Self {
-        ts as u32
-    }
-}
-
-impl From<u32> for TickState {
-    fn from(x: u32) -> Self {
-        match x {
-            0 => Tick,
-            1 => Wait,
-            _ => Stop,
-        }
-    }
-}
-
-static THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
+transitions!( SM2:
+    Stop, Init  => Tick
+    Tick, Even  => Wait
+    Wait, Odd   => Tick
+    Wait, Limit => Stop
+);
 
 // Define what happens at which state.
 
-fn run(machine: StateMachine, counter: CountSignal) {
+fn run(mut machine: StateMachine<State,Event>, counter: CountSignal, tid: u32) {
     let limit = 30;
-    let mut state = Tick; // the state we start from, usually Init or something similar
-
-    let thread_id = THREAD_COUNT.load(SeqCst) as u32;
-    let thread_count = 2;
-    THREAD_COUNT.store(thread_id as usize +1, SeqCst);
-    while thread_count != THREAD_COUNT.load(SeqCst) as u32 {sleep(Duration::from_millis(1));};
+    let threads = 2;
+    let mut event = Init;
 
     loop {
-        match machine.next(&mut state) { // this sets the next state for you, based on the transitions
+        println!("th{:?}: {:?} {:?}", tid, machine.state(), event);
+        match machine.next(&event) { // this sets the next state for you, based on the transitions
             Tick => {
-                if counter.probe() % thread_count != thread_id {
-                    println!("T{:?}: {:?}", thread_id, counter.incr())
+                let c = counter.probe();
+                if c >= limit {
+                    event = Limit
+                }
+                else if c % threads == tid {
+                    event = Even;
+                    counter.incr();
                 }
                 else {
-                    state = Wait
-                }
-
-            },
-            Wait => {
-                if thread_id == 1 {
-                    sleep(Duration::from_millis(100))
-                }
-                if counter.probe() >= limit {
-                    state = Stop // manually change state transition, if necessary
+                    event = Even
                 }
             },
-            Stop => return
+            Wait => sleep(Duration::from_millis(100)),
+            _    => panic!("th{} entered undefined state from ({:?}, {:?})", tid, machine.state(), event)
         }
     }
 }
 
 
 fn main() {
-    // Transitions can be described as easy as this and always happens from the left to the right value.
-    let transitions = [
-        (Tick, Wait),
-        (Wait, Tick),
-    ];
-
     // Create some state machines from the transitions, and define the stop state for each.
-    let mut sm1 = StateMachine::from(&transitions, Stop);
-    let mut sm2 = StateMachine::from(&transitions, Stop);
+    let mut sm1 = StateMachine::new(&SM1, Stop, Stop);
+    let mut sm2 = StateMachine::new(&SM2, Stop, Stop);
 
     // This is the counter we share between the threads.
     let c1 = CountSignal::default();
@@ -96,18 +68,18 @@ fn main() {
 
     // The connection of two state machines is not complicated, but not easily readable at the moment.
     // So, how to read this thing?
-    sm1.connect(Tick, // this is the sm1 state that depends on the other state machines (sm2) state
-        &sm2, // the other state machine
-        Wait, // the state we depend on
-        Wait  // the state we go next if the other state machine is not in the state we depend on
-              //    (this gives us the flexibility to go ahead with something else, or try again)
-    );
-    sm2.connect(Tick, &sm1, Wait, Wait);
+    // sm1.connect(Tick, // this is the sm1 state that depends on the other state machines (sm2) state
+    //     &sm2, // the other state machine
+    //     Wait, // the state we depend on
+    //     Wait  // the state we go next if the other state machine is not in the state we depend on
+    //           //    (this gives us the flexibility to go ahead with something else, or try again)
+    // );
+    // sm2.connect(Tick, &sm1, Wait, Wait);
 
     // Run the state machines on threads
-    let t1 = thread::spawn(|| run(sm1, c1) );
-    let t2 = thread::spawn(|| run(sm2, c2) );
+    // let t1 = thread::spawn(|| run(sm1, c1, 0) );
+    let t2 = thread::spawn(|| run(sm2, c2, 1) );
 
     t2.join().unwrap();
-    t1.join().unwrap();
+    // t1.join().unwrap();
 }

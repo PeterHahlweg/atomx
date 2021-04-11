@@ -1,4 +1,4 @@
-use super::signal::*;
+use crate::signal::*;
 
 // State Signal
 type Signal = SignalU32;
@@ -7,120 +7,118 @@ type Signal = SignalU32;
 ///     - improve connect api
 ///     - improve documentation
 
- #[derive(Clone, Debug)]
- struct State {
-    value: u32,
-    signal: Option<Signal>,
-    condition: u32, // compare this to signal, to decide if go next or stay at state
-    redirect: u32, // next state if the signal is not equal to condition
- }
-
- impl Default for State {
-    fn default() -> Self {
-        State {
-            value: 0,
-            signal: None,
-            condition: 0,
-            redirect: 0, // redirect is not the correct word, for the next state if the condition fails
-        }
-    }
- }
-
-#[derive(Clone)]
-pub struct StateMachine
-{
+#[derive(Clone, Debug)]
+pub struct Dependency<S> {
     signal: Signal,
-    states: Vec<State>,
-    stop: u32,
+    state: u16,
+
+    /// detour is not a real part of the dependency, as it is not defined by the sm we depend on
+    /// but it only matters if there is a dependency, so it is defined here
+    detour: S,
 }
 
-impl StateMachine
+
+/// if there many dependent states, it is a problem as we need to check them all
+///  - one approach could be to implement a dependency counter
+///  - if it goes to 0 we can got ahead else take the detour
+///  - there will be more concurrent access to it, but no heap and only a little memory
+///  - implement a tracker that can be used at debugging, because a reference count removes the
+///    information about which state is reached and which not
+///  - in debug case it is als not important how much memory is allocated somewhere
+///  - the dependency member of Transition can be reduced to Option<Signal>
+
+#[derive(Clone, Debug)]
+pub struct Transition<S,E> {
+    pub state: S,
+    pub event: E,
+    pub next:  S,
+    pub dependency: Option<Dependency<S>>
+}
+
+impl<S,E> Default for Transition<S,E>
+where   S: Into<u16> + From<u16> + Copy + Default,
+        E: Into<u16> + Copy + Default
 {
-    pub fn new() -> Self {
+    fn default() -> Self {
+        Transition {
+            state: S::default(),
+            event: E::default(),
+            next: S::default(),
+            dependency: None,
+        }
+    }
+}
+
+#[allow(clippy::type_complexity)]
+pub struct Transitions<S:'static + Sized, E: 'static + Sized> {
+    pub list: &'static [Transition<S,E>],
+    pub lookup: fn(&'static [Transition<S,E>], &S, &E) -> &'static Transition<S,E>
+}
+
+#[derive(Clone)]
+pub struct StateMachine<S:'static, E:'static> {
+    signal: Signal,
+    state: S,
+    start: S,
+    stop: S,
+    transitions: &'static Transitions<S,E>
+}
+
+impl<S,E> StateMachine<S,E>
+where   S: Into<u16> + Copy + Default,
+        E: Copy
+{
+    pub fn new(transitions: &'static Transitions<S,E>, start: S, stop: S) -> Self {
         StateMachine {
             signal: Signal::default(),
-            states: vec![],
-            stop: 0,
+            state: start,
+            start,
+            stop,
+            transitions
         }
     }
 
-    pub fn from<S>(map: &[(S, S)], stop: S) -> StateMachine
-    where S: Clone + Into<u32>
-    {
-        let mut sm = StateMachine::new();
-        sm.stop = stop.into();
-        let default_state = State{value: sm.stop, signal: None, condition: 0, redirect: 0};
-        sm.states.resize(map.len(), default_state.clone());
-
-        for value in map {
-            let state: u32 = value.0.clone().into();
-            let next: u32  = value.1.clone().into();
-            let max = std::cmp::max(state, next) as usize;
-            if sm.states.len() < max {
-                sm.states.resize(max+1, default_state.clone());
-            }
-            sm.states[state as usize] = State{value: next, signal: None, condition: 0, redirect: 0};
-        }
-        sm
+    pub fn state(&self) -> S {
+        self.state
     }
 
-    pub fn state<S>(&self) -> S
-    where S: From<u32> + Clone
-    {
-        self.signal.probe().into()
+    pub fn reset(&mut self) {
+        self.state = self.start;
+        self.signal.emit(self.start.into() as u32);
     }
 
-    pub fn next<S>(&self, state: &mut S) -> S
-    where S: Into<u32> + From<u32> + Clone
-    {
-        let idx = state.clone().into() as usize;
-        let next = if idx < self.states.len() {
-            let next = &self.states[idx];
-            match &next.signal {
-                Some(signal) => {
-                    if signal.probe() == next.condition {
-                        next.value
-                    }
-                    else {
-                        next.redirect
-                    }
-                }
-                None => {
-                    next.value
-                }
+
+    pub fn next(&mut self, event: &E) -> S {
+        let lookup = self.transitions.lookup;
+        let transition = lookup(self.transitions.list, &self.state, event);
+        let mut next = transition.next;
+        if let Some(dependency) = &transition.dependency {
+            if dependency.signal.probe() as u16 != dependency.state {
+                next = dependency.detour
             }
         }
-        else {
-            self.stop
-        };
-        self.signal.emit(next);
-        let next: S = next.into();
-        *state = next.clone();
+        self.signal.emit(next.into() as u32);
+        self.state = next;
         next
     }
 
     pub fn state_count(&self) -> usize {
-        self.states.len()
+        self.transitions.list.len()
     }
 
 
-    pub fn connect<SA,SB>(&mut self, state: SA, other: &StateMachine, condition: SB, redirect: SA)
+    pub fn connect<SA,SB,EB>(&mut self, state: SA, other: &StateMachine<SB,EB>, dependency: SB, alternative: SA)
     where   SA: Into<u32>, SB: Into<u32>
     {
-        let idx = state.into() as u32 as usize;
-        self.states[idx].signal = Some(other.signal.clone());
-        self.states[idx].condition = condition.into();
-        self.states[idx].redirect = redirect.into();
+        // let idx = state.into() as u32 as usize;
+        // self.transitions[idx].signal = Some(other.signal.clone());
+        // self.transitions[idx].dependency = dependency.into();
+        // self.transitions[idx].alternative = alternative.into();
     }
 
 }
 
-impl Default for StateMachine {
-    fn default() -> Self {
-        StateMachine::new()
-    }
-}
-
+/*
 mod unittest {
 
     #[derive(Debug, Clone, Copy, PartialEq)]
@@ -233,3 +231,4 @@ mod unittest {
         assert_eq!(state, B);
     }
 }
+*/

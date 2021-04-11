@@ -13,3 +13,4 @@ description = "Thread safe data structures based on atomic data types."
 
 
 [dependencies]
+atomx-macro = { path = "../atomx-macro" }

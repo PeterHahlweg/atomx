@@ -21,21 +21,21 @@ impl BooleanSignal {
     }
 
     pub fn is_true(&self) -> bool {
-        self.state.load(Acquire)
+        self.state.load(SeqCst)
     }
 
     pub fn is_false(&self) -> bool {
-        ! self.state.load(Acquire)
+        ! self.state.load(SeqCst)
     }
 }
 
 impl SignalAccess<bool> for BooleanSignal {
     fn probe(&self) -> bool {
-        self.state.load(Acquire)
+        self.state.load(SeqCst)
     }
 
     fn emit(&self, val: bool) {
-        self.state.store(val, Release);
+        self.state.store(val, SeqCst);
     }
 }
 
@@ -61,7 +61,7 @@ impl Default for RawSignalU32 {
 }
 
 impl RawSignalU32 {
-    pub fn new(val: u32) -> Self {
+    pub const fn new(val: u32) -> Self {
         RawSignalU32 {
             state: AtomicU32::new(val)
         }
@@ -79,17 +79,25 @@ impl RawSignalU32 {
 impl SignalAccess<u32> for RawSignalU32 {
 
     fn probe(&self) -> u32 {
-        self.state.load(Acquire)
+        self.state.load(SeqCst)
     }
 
     fn emit(&self, val: u32) {
-        self.state.store(val, Release);
+        self.state.store(val, SeqCst);
     }
 
 }
 
 #[derive(Clone, Debug)]
 pub struct SignalU32 { arc: Arc<RawSignalU32> }
+
+impl SignalU32 {
+    fn new(value: u32) -> Self {
+        SignalU32 {
+            arc: Arc::new(RawSignalU32::new(value))
+        }
+    }
+}
 
 impl Default for SignalU32 {
     fn default() -> Self {
