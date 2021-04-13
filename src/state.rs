@@ -7,12 +7,6 @@ type Signal = SignalU32;
 ///     - improve connect api
 ///     - improve documentation
 
-#[derive(Clone, Debug)]
-pub struct Dependency {
-    signal: Signal,
-    state: u16,
-}
-
 
 /// if there many dependent states, it is a problem as we need to check them all
 ///  - one approach could be to implement a dependency counter
@@ -29,7 +23,8 @@ pub struct Transition<S,E> {
     pub event: E,
     pub next:  S,
     pub detour: S,
-    pub dependency: Option<Dependency>
+    pub dependencies: Option<Signal>,
+    pub signal: Option<Signal>
 }
 
 impl<S,E> Default for Transition<S,E>
@@ -42,7 +37,8 @@ where   S: Into<u16> + From<u16> + Copy + Default,
             event: E::default(),
             next: S::default(),
             detour: S::default(),
-            dependency: None,
+            dependencies: None,
+            signal: None,
         }
     }
 }
@@ -55,11 +51,11 @@ pub struct Transitions<S:'static + Sized, E: 'static + Sized> {
 
 #[derive(Clone)]
 pub struct StateMachine<S:'static, E:'static> {
-    signal: Signal,
     state: S,
     start: S,
     stop: S,
-    transitions: &'static Transitions<S,E>
+    transitions: &'static Transitions<S,E>,
+    last_transition: &'static Transition<S,E>
 }
 
 impl<S,E> StateMachine<S,E>
@@ -68,11 +64,11 @@ where   S: Into<u16> + Copy + Default,
 {
     pub fn new(transitions: &'static Transitions<S,E>, start: S, stop: S) -> Self {
         StateMachine {
-            signal: Signal::default(),
             state: start,
             start,
             stop,
-            transitions
+            transitions,
+            last_transition: &transitions.list[0], // default undefined transition of every sm
         }
     }
 
@@ -82,7 +78,8 @@ where   S: Into<u16> + Copy + Default,
 
     pub fn reset(&mut self) {
         self.state = self.start;
-        self.signal.emit(self.start.into() as u32);
+        // TODO: we need a proper replacement here
+        // self.signal.emit(self.start.into() as u32);
     }
 
 
@@ -90,12 +87,20 @@ where   S: Into<u16> + Copy + Default,
         let lookup = self.transitions.lookup;
         let transition = lookup(self.transitions.list, &self.state, event);
         let mut next = transition.next;
-        if let Some(dependency) = &transition.dependency {
-            if dependency.signal.probe() as u16 != dependency.state {
-                next = transition.detour
+        if let Some(dependencies) = &transition.dependencies {
+            match dependencies.probe() {
+                0 => next = transition.next,
+                _ => next = transition.detour,
             }
+
         }
-        self.signal.emit(next.into() as u32);
+        if let Some(signal) = &transition.signal {
+            signal.decr(); // fulfill someones dependency, approaching 0
+        }
+        if let Some(signal) = &self.last_transition.signal {
+            signal.incr(); // leaving the state, the dependency of someone else is not fulfilled anymore
+        }
+        self.last_transition = transition;
         self.state = next;
         next
     }

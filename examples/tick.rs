@@ -10,6 +10,9 @@ use atomx::SignalU32 as CountSignal;
 use std::{thread, thread::sleep};
 use std::time::Duration;
 
+// TODO:   - maybe it is good if every SM has its own states and events, not shared once
+//         - could be combined with transition only description
+
 states!(Tick, Wait, Stop);
 events!(Init, Even, Odd, Limit);
 
@@ -36,7 +39,7 @@ fn run(mut machine: StateMachine<State,Event>, counter: CountSignal, tid: u32) {
 
     loop {
         println!("th{:?}: {:?} {:?}", tid, machine.state(), event);
-        match machine.next(&event) { // this sets the next state for you, based on the transitions
+        match /* state = */ machine.next(&event) { // this sets the next state for you, based on the transitions
             Tick => {
                 let c = counter.probe();
                 if c >= limit {
@@ -59,7 +62,7 @@ fn run(mut machine: StateMachine<State,Event>, counter: CountSignal, tid: u32) {
 
 fn main() {
     // Create some state machines from the transitions, and define the stop state for each.
-    let mut sm1 = StateMachine::new(&SM1, Stop, Stop);
+    // let mut sm1 = StateMachine::new(&SM1, Stop, Stop);
     let mut sm2 = StateMachine::new(&SM2, Stop, Stop);
 
     // This is the counter we share between the threads.
