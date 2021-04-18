@@ -1,4 +1,5 @@
 use crate::signal::*;
+use smallvec::SmallVec;
 
 // State Signal
 type Signal = SignalU32;
@@ -18,12 +19,31 @@ type Signal = SignalU32;
 ///  - the dependency member of Transition can be reduced to Option<Signal>
 
 #[derive(Clone, Debug)]
+pub struct Dependency<S> {
+    pub(crate) signal: Signal,
+    pub(crate) state: S
+}
+
+impl<S> Default for Dependency<S>
+where   S: Default,
+{
+    fn default() -> Self {
+        Dependency {
+            signal: Signal::default(),
+            state: S::default()
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Transition<S,E> {
     pub state: S,
     pub event: E,
     pub next:  S,
     pub detour: S,
-    pub dependencies: Option<Signal>,
+
+    // This dependencies field is not really optional, but using Option is a workaround, as the Signals can not be copied. Which would be needed at array initialization.
+    pub dependencies: Option<SmallVec<[Dependency<S>; 2]>>,
     pub signal: Option<Signal>
 }
 
@@ -49,68 +69,57 @@ pub struct Transitions<S:'static + Sized, E: 'static + Sized> {
     pub lookup: fn(&'static [Transition<S,E>], &S, &E) -> &'static Transition<S,E>
 }
 
-#[derive(Clone)]
-pub struct StateMachine<S:'static, E:'static> {
-    state: S,
-    start: S,
-    stop: S,
-    transitions: &'static Transitions<S,E>,
-    last_transition: &'static Transition<S,E>
+pub trait ModifiableStateMachine<S,E> {
+    fn set_state(&mut self, state: S);
+    fn lookup(&self, state: &S, event: &E) -> &Transition<S,E>;
+    fn last_transition_signal(&self) -> &Option<Signal>;
+    fn set_last_transition_signal(&mut self, signal: Option<Signal>);
 }
 
-impl<S,E> StateMachine<S,E>
+pub trait StateMachine<S,E>
 where   S: Into<u16> + Copy + Default,
         E: Copy
 {
-    pub fn new(transitions: &'static Transitions<S,E>, start: S, stop: S) -> Self {
-        StateMachine {
-            state: start,
-            start,
-            stop,
-            transitions,
-            last_transition: &transitions.list[0], // default undefined transition of every sm
-        }
-    }
+    fn new(start: S, stop: S) -> Self;
 
-    pub fn state(&self) -> S {
-        self.state
-    }
+    fn state(&self) -> S;
 
-    pub fn reset(&mut self) {
-        self.state = self.start;
-        // TODO: we need a proper replacement here
-        // self.signal.emit(self.start.into() as u32);
-    }
+    fn reset(&mut self);
 
-
-    pub fn next(&mut self, event: &E) -> S {
-        let lookup = self.transitions.lookup;
-        let transition = lookup(self.transitions.list, &self.state, event);
-        let mut next = transition.next;
-        if let Some(dependencies) = &transition.dependencies {
-            match dependencies.probe() {
-                0 => next = transition.next,
-                _ => next = transition.detour,
+    fn next(&mut self, event: &E) -> S
+    where Self: ModifiableStateMachine<S,E>
+    {
+        let next;
+        let signal;
+        {   // here only a immutable reference to self is needed,
+            // and it has to be dropped before mutating self
+            let transition = self.lookup(&self.state(), event);
+            signal = transition.signal.clone();
+            next = match &transition.dependencies {
+                Some(dependencies) => {
+                    let count = dependencies.iter()
+                        .map(|d| (d.signal.probe() as u16 == d.state.into()) as usize )
+                        .sum();
+                        match count {
+                            0 => transition.next,
+                            _ => transition.detour
+                    }
+                }
+                None => transition.next
+            };
+            if let Some(signal) = &transition.signal {
+                signal.decr(); // fulfill someones dependency, approaching 0
             }
-
+            if let Some(signal) = self.last_transition_signal() {
+                signal.incr(); // leaving the state, the dependency of someone else is not fulfilled anymore
+            }
         }
-        if let Some(signal) = &transition.signal {
-            signal.decr(); // fulfill someones dependency, approaching 0
-        }
-        if let Some(signal) = &self.last_transition.signal {
-            signal.incr(); // leaving the state, the dependency of someone else is not fulfilled anymore
-        }
-        self.last_transition = transition;
-        self.state = next;
+        self.set_last_transition_signal(signal);
+        self.set_state(next);
         next
     }
 
-    pub fn state_count(&self) -> usize {
-        self.transitions.list.len()
-    }
-
-
-    pub fn connect<SA,SB,EB>(&mut self, state: SA, other: &StateMachine<SB,EB>, dependency: SB, alternative: SA)
+    fn connect<SA,SB,SM2>(&mut self, state: SA, other: &SM2, dependency: SB, alternative: SA)
     where   SA: Into<u32>, SB: Into<u32>
     {
         // let idx = state.into() as u32 as usize;
