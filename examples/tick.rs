@@ -5,6 +5,10 @@
 ///
 /// What you will see is that two threads counting up in alternating order.
 
+
+// TODO: there still exists a bug, not yet in the order that was the goal
+
+
 use atomx::*;
 use atomx::SignalU32 as Signal;
 use std::{thread, thread::sleep};
@@ -12,19 +16,17 @@ use std::time::Duration;
 use smallvec::SmallVec;
 
 StateMachine!( SM1:
-    Stop,  Init   => Sleep
-    Sleep, WakeUp => Tick
-    Tick,  Even   => Sleep
-    Tick,  Odd    => Sleep
+    Stop,  Init   => Tick
+    Wait,  WakeUp => Tick
+    Tick,  Done   => Wait
     Tick,  Limit  => Stop
 );
 
 StateMachine!( SM2:
-    Stop,  Init   => Sleep
-    Sleep, WakeUp => Tick
-    Tick,  Even   => Sleep
-    Tick,  Odd    => Sleep
-    Tick,  Limit  => Stop
+    Stop,  Init   => Tock
+    Wait,  WakeUp => Tock
+    Tock,  Done   => Wait
+    Tock,  Limit  => Stop
 );
 
 // Define what happens at which state.
@@ -35,24 +37,20 @@ fn run1(mut machine: SM1, counter: Signal, tid: u32) {
     let limit = 30;
     let mut event = Init;
     let mut c;
+
+    // turn this into an iterator
     loop {
         // println!("th{:?}: {:?} {:?}", tid, machine.state(), event);
         match machine.next(&event) { // this sets the next state for you, based on the transitions
             Tick => {
-                c = counter.probe();
-                if c >= limit {
-                    event = Limit
+                c = counter.incr() -1;
+                match c >= limit {
+                    true  => event = Limit,
+                    false => event = Done
                 }
-                else if c % 2 == 0  {
-                    event = Even;
-                    println!("th{:?}: {:?} counter {:?}", tid, event, c);
-                    counter.incr();
-                }
-                else {
-                    event = Odd
-                }
+                println!("th{:?}: {:?} counter {:?}", tid, event, c);
             },
-            Sleep => {
+            Wait => {
                 sleep(Duration::from_millis(100));
                 event = WakeUp
             },
@@ -72,21 +70,15 @@ fn run2(mut machine: SM2, counter: Signal, tid: u32) {
     loop {
         // println!("th{:?}: {:?} {:?}", tid, machine.state(), event);
         match machine.next(&event) { // this sets the next state for you, based on the transitions
-            Tick => {
-                c = counter.probe();
-                if c >= limit {
-                    event = Limit
+            Tock => {
+                c = counter.incr() -1;
+                match c >= limit {
+                    true  => event = Limit,
+                    false => event = Done
                 }
-                else if c % 2 == 1 {
-                    event = Odd;
-                    println!("th{:?}:  {:?} counter {:?}", tid, event, c);
-                    counter.incr();
-                }
-                else {
-                    event = Even
-                }
+                println!("th{:?}: {:?} counter {:?}", tid, event, c);
             },
-            Sleep => {
+            Wait => {
                 sleep(Duration::from_millis(100));
                 event = WakeUp
             },
@@ -103,26 +95,24 @@ fn main() {
     let mut sm2 = SM2::new(SM2State::Stop, SM2State::Stop);
 
     // This is the counter we share between the threads.
-    let c1 = Signal::default();
-    let c2 = c1.clone();
+    let counter1 = Signal::default();
+    let counter2 = counter1.clone();
 
-    // The connection of two state machines is not complicated, but not easily readable at the moment.
-    // So, how to read this thing?
-    // sm1.connect(Tick, // this is the sm1 state that depends on the other state machines (sm2) state
-    //     &sm2, // the other state machine
-    //     Wait, // the state we depend on
-    //     Wait  // the state we go next if the other state machine is not in the state we depend on
-    //           //    (this gives us the flexibility to go ahead with something else, or try again)
-    // );
-    // sm2.connect(Tick, &sm1, Wait, Wait);
+    // Connect two state machines
+    // - the state machines are constant
+    // - but at runtime it is allowed to add dependency's to their transitions
+    // TODO: here one can abuse the transition, this is not good
+    sm1.transition(SM1State::Wait, SM1Event::WakeUp)
+       .depend_on(&mut sm2, SM2State::Wait)
+       .next_if_pending(SM1State::Wait);
 
-    // Example for better API
-    // sm1.connect(state_a).with(sm2, state_b).if_pending(detour);
-    //                                        .loop_if_pending();
+    sm2.transition(SM2State::Wait, SM2Event::WakeUp)
+       .depend_on(&mut sm1, SM1State::Wait)
+       .next_if_pending(SM2State::Wait);
 
     // Run the state machines on threads
-    let t1 = thread::spawn(|| run1(sm1, c1, 0) );
-    let t2 = thread::spawn(|| run2(sm2, c2, 1) );
+    let t1 = thread::spawn(|| run1(sm1, counter1, 0) );
+    let t2 = thread::spawn(|| run2(sm2, counter2, 1) );
 
     t2.join().unwrap();
     t1.join().unwrap();

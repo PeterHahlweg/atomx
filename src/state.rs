@@ -5,32 +5,22 @@ use smallvec::SmallVec;
 type Signal = SignalU32;
 
 /// TODO:
-///     - improve connect api
 ///     - improve documentation
+///     - implement a tracker that can be used at debugging
 
-
-/// if there many dependent states, it is a problem as we need to check them all
-///  - one approach could be to implement a dependency counter
-///  - if it goes to 0 we can got ahead else take the detour
-///  - there will be more concurrent access to it, but no heap and only a little memory
-///  - implement a tracker that can be used at debugging, because a reference count removes the
-///    information about which state is reached and which not
-///  - in debug case it is als not important how much memory is allocated somewhere
-///  - the dependency member of Transition can be reduced to Option<Signal>
 
 #[derive(Clone, Debug)]
-pub struct Dependency<S> {
+pub struct Dependency {
     pub(crate) signal: Signal,
-    pub(crate) state: S
+    pub(crate) state: u16
 }
 
-impl<S> Default for Dependency<S>
-where   S: Default,
+impl Default for Dependency
 {
     fn default() -> Self {
         Dependency {
             signal: Signal::default(),
-            state: S::default()
+            state: 0
         }
     }
 }
@@ -43,8 +33,8 @@ pub struct Transition<S,E> {
     pub detour: S,
 
     // This dependencies field is not really optional, but using Option is a workaround, as the Signals can not be copied. Which would be needed at array initialization.
-    pub dependencies: Option<SmallVec<[Dependency<S>; 2]>>,
-    pub signal: Option<Signal>
+    pub dependencies: Option<SmallVec<[Dependency; 2]>>,
+    // pub signal: Option<Signal>
 }
 
 impl<S,E> Default for Transition<S,E>
@@ -58,8 +48,30 @@ where   S: Into<u16> + From<u16> + Copy + Default,
             next: S::default(),
             detour: S::default(),
             dependencies: None,
-            signal: None,
+            // signal: None,
         }
+    }
+}
+
+impl<S,E> Transition<S,E>
+{
+    pub fn depend_on<'a, SMB, SB, EB>(&'a mut self, state_machine: &mut SMB, state: SB) -> DetourConnection<S,E>
+    where SB: Into<u16> + Copy + Default, EB: Copy, SMB: StateMachine<SB,EB> {
+        let transition = self;
+        let dependency = Dependency {
+            signal: state_machine.signal().clone(),
+            state:  state.into()
+        };
+
+        if transition.dependencies.is_none() {
+            transition.dependencies = Some(SmallVec::<[Dependency; 2]>::with_capacity(2))
+        }
+
+        if let Some(dep) = &mut transition.dependencies {
+            dep.push(dependency);
+        }
+
+        DetourConnection{transition}
     }
 }
 
@@ -70,10 +82,24 @@ pub struct Transitions<S:'static + Sized, E: 'static + Sized> {
 }
 
 pub trait ModifiableStateMachine<S,E> {
-    fn set_state(&mut self, state: S);
-    fn lookup(&self, state: &S, event: &E) -> &Transition<S,E>;
     fn last_transition_signal(&self) -> &Option<Signal>;
+    fn lookup(&self, state: &S, event: &E) -> &Transition<S,E>;
+    fn mut_lookup(&mut self, state: &S, event: &E) -> &mut Transition<S,E>;
+    fn set_state(&mut self, state: S);
     fn set_last_transition_signal(&mut self, signal: Option<Signal>);
+}
+
+pub struct DetourConnection<'c, SA, EA> {
+    transition: &'c mut Transition<SA,EA>,
+}
+
+impl<'c, SA, EA> DetourConnection<'c, SA, EA> where SA: Copy {
+    pub fn next_if_pending(self, state: SA) {
+        self.transition.detour = state;
+    }
+    pub fn loop_if_pending(self) {
+        self.transition.detour = self.transition.state;
+    }
 }
 
 pub trait StateMachine<S,E>
@@ -84,21 +110,26 @@ where   S: Into<u16> + Copy + Default,
 
     fn state(&self) -> S;
 
+    fn signal(&self) -> &Signal;
+
     fn reset(&mut self);
 
     fn next(&mut self, event: &E) -> S
     where Self: ModifiableStateMachine<S,E>
     {
         let next;
-        let signal;
+
+        // TODO: is the last transition really needed without ref counting?
+        // let last_signal;
+
         {   // here only a immutable reference to self is needed,
             // and it has to be dropped before mutating self
             let transition = self.lookup(&self.state(), event);
-            signal = transition.signal.clone();
+            // last_signal = transition.signal.clone();
             next = match &transition.dependencies {
                 Some(dependencies) => {
                     let count = dependencies.iter()
-                        .map(|d| (d.signal.probe() as u16 == d.state.into()) as usize )
+                        .map(|d| (d.signal.probe() as u16 == d.state) as usize )
                         .sum();
                         match count {
                             0 => transition.next,
@@ -107,25 +138,24 @@ where   S: Into<u16> + Copy + Default,
                 }
                 None => transition.next
             };
-            if let Some(signal) = &transition.signal {
-                signal.decr(); // fulfill someones dependency, approaching 0
-            }
-            if let Some(signal) = self.last_transition_signal() {
-                signal.incr(); // leaving the state, the dependency of someone else is not fulfilled anymore
-            }
+            // if let Some(signal) = &transition.signal {
+            //     signal.decr(); // fulfill someones dependency, approaching 0
+            // }
+            // if let Some(signal) = self.last_transition_signal() {
+            //     signal.incr(); // leaving the state, the dependency of someone else is not fulfilled anymore
+            // }
         }
-        self.set_last_transition_signal(signal);
+
+        // self.set_last_transition_signal(last_signal);
         self.set_state(next);
         next
     }
 
-    fn connect<SA,SB,SM2>(&mut self, state: SA, other: &SM2, dependency: SB, alternative: SA)
-    where   SA: Into<u32>, SB: Into<u32>
-    {
-        // let idx = state.into() as u32 as usize;
-        // self.transitions[idx].signal = Some(other.signal.clone());
-        // self.transitions[idx].dependency = dependency.into();
-        // self.transitions[idx].alternative = alternative.into();
+    // sm.connect(state_x).with(sm2, state_b).loop_if_pending()
+
+    fn transition(&mut self, state:S, event:E) -> &mut Transition<S,E>
+    where Self: ModifiableStateMachine<S,E> {
+        self.mut_lookup(&state, &event)
     }
 
 }
