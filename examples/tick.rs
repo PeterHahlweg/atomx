@@ -18,6 +18,7 @@ use smallvec::SmallVec;
 StateMachine!( SM1:
     Stop,  Init   => Tick
     Wait,  WakeUp => Tick
+    Pending, WakeUp => Tick
     Tick,  Done   => Wait
     Tick,  Limit  => Stop
 );
@@ -25,6 +26,7 @@ StateMachine!( SM1:
 StateMachine!( SM2:
     Stop,  Init   => Tock
     Wait,  WakeUp => Tock
+    Pending, WakeUp => Tock
     Tock,  Done   => Wait
     Tock,  Limit  => Stop
 );
@@ -52,6 +54,10 @@ fn run1(mut machine: SM1, counter: Signal, tid: u32) {
             },
             Wait => {
                 sleep(Duration::from_millis(100));
+                event = WakeUp
+            },
+            Pending => {
+                sleep(Duration::from_millis(10));
                 event = WakeUp
             },
             Stop => break,
@@ -82,6 +88,9 @@ fn run2(mut machine: SM2, counter: Signal, tid: u32) {
                 sleep(Duration::from_millis(100));
                 event = WakeUp
             },
+            Pending => {
+                event = WakeUp
+            },
             Stop => break,
             _    => panic!("th{} entered undefined
              state from ({:?}, {:?})", tid, machine.state(), event)
@@ -101,14 +110,18 @@ fn main() {
     // Connect two state machines
     // - the state machines are constant
     // - but at runtime it is allowed to add dependency's to their transitions
-    // TODO: here one can abuse the transition, this is not good
+    // TODO: here one can abuse the transition, not good
     sm1.transition(SM1State::Wait, SM1Event::WakeUp)
-       .depend_on(&mut sm2, SM2State::Wait)
-       .next_if_pending(SM1State::Wait);
+       .depend_on(&sm2, SM2State::Wait)
+       .next_if_pending(SM1State::Pending);
 
     sm2.transition(SM2State::Wait, SM2Event::WakeUp)
-       .depend_on(&mut sm1, SM1State::Wait)
-       .next_if_pending(SM2State::Wait);
+       .depend_on(&sm1, SM1State::Wait)
+       .next_if_pending(SM2State::Pending);
+
+    // Often we want a handshake. In a way that makes the connection reliable.
+    // The Problem is, a machine can go into and out of a state without the notice
+    // of other threads (maybe they are sleeping aat this moment).
 
     // Run the state machines on threads
     let t1 = thread::spawn(|| run1(sm1, counter1, 0) );

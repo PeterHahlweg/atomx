@@ -55,7 +55,7 @@ where   S: Into<u16> + From<u16> + Copy + Default,
 
 impl<S,E> Transition<S,E>
 {
-    pub fn depend_on<'a, SMB, SB, EB>(&'a mut self, state_machine: &mut SMB, state: SB) -> DetourConnection<S,E>
+    pub fn depend_on<'a, SMB, SB, EB>(&'a mut self, state_machine: &SMB, state: SB) -> DetourConnection<S,E>
     where SB: Into<u16> + Copy + Default, EB: Copy, SMB: StateMachine<SB,EB> {
         let transition = self;
         let dependency = Dependency {
