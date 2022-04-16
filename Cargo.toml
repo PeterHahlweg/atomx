@@ -13,5 +13,4 @@ description = "Thread safe data structures based on atomic data types."
 
 
 [dependencies]
-atomx-macro = { path = "../atomx-macro" }
-smallvec = "1.6.1"
+atomx-macro = { path = "macro" }
