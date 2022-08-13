@@ -5,18 +5,19 @@
 use atomx::*;
 
 fn main() {
-    StateMachine!( SM:
+    StateMachine!( M:
         Stop, Init   -> Tick
         Wait, WakeUp -> Tick
         Tick, Done   -> Wait
         Tick, Limit  -> Stop
     );
 
-    // Create some state machines from the transitions, and define the stop state for each.
-    let mut machine = SM::new(SMState::Stop, SMState::Stop);
+    use MState::*;
+    use MEvent::*;
 
-    use SMState::*;
-    use SMEvent::*;
+    // Create some state machines from the transitions, and define the stop state for each.
+    let mut machine = M::new(Stop, Stop);
+
     let limit = 30;
     let mut event = Init;
     let mut c = 0_i32;
@@ -24,7 +25,7 @@ fn main() {
     // turn this into an iterator
     loop {
         println!("{:?} {:?}", machine.state(), event);
-        match machine.next_state(&event) { // this sets the next state for you, based on the transitions
+        match machine.process(&event) { // this sets the next state for you, based on the transitions
             Tick => {
                 match c >= limit {
                     true  => event = Limit,

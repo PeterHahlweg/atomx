@@ -200,6 +200,7 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
         impl StateMachine<#state_type,#event_type> for #machine_type<#state_type,#event_type>
         where #state_type: Default {
 
+            /// This is new.
             fn new(start: #state_type, stop: #state_type) -> Self {
                 #machine_type {
                     state: start,

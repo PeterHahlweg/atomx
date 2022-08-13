@@ -33,7 +33,7 @@ where   S: Copy + Default + std::fmt::Debug,
 
     fn lookup(&self, state: &S, event: &E) -> &Transition<S,E>;
 
-    fn next_state(&mut self, event: &E) -> S
+    fn process(&mut self, event: &E) -> S
     {
         let next = self.lookup(&self.state(), event).next;
         self.set_state(next);
