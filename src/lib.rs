@@ -1,3 +1,3 @@
 mod state;
 pub use state::*;
-pub use atomx_macro::*;
+pub use fsm::*;

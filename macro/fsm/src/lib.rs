@@ -13,6 +13,7 @@ struct Transition {
     pub state: Ident,
     pub event: Ident,
     pub next: Ident,
+    // pub detour: Ident
 }
 
 impl Parse for Transition {
@@ -129,6 +130,7 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
             state: #state_type::#state,
             event: #event_type::#event,
             next: #state_type::#next,
+            detour: #state_type::Undefined
         },
     }
     }).collect::<Vec<_>>();
@@ -143,6 +145,11 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
     let event_enum = quote! {
         #[derive(Clone,Copy,Debug,PartialEq)]
         enum #event_type{ Undefined, #(#list)* }
+        impl From<#event_type> for u16 {
+            fn from(event: #event_type) -> Self {
+                event as u16
+            }
+        }
         impl Default for #event_type {
             fn default() -> Self {
                 #event_type::Undefined
@@ -161,6 +168,11 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
     let state_enum = quote! {
         #[derive(Clone,Copy,Debug,PartialEq)]
         enum #state_type{ Undefined, #(#list)* }
+        impl From<#state_type> for u16 {
+            fn from(state: #state_type) -> Self {
+                state as u16
+            }
+        }
         impl Default for #state_type {
             fn default() -> Self {
                 #state_type::Undefined
@@ -179,12 +191,16 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
         quote
     }).collect::<Vec<_>>();
 
+
+    // create state machine
     let undefined_name = Ident::new(format!("UNDEFINED_TRANSITION_{}",name).as_str(), Span::call_site());
     let state_machine = quote! {
         const #undefined_name: Transition<#state_type,#event_type> = Transition {
             state: #state_type::Undefined,
             event: #event_type::Undefined,
             next: #state_type::Undefined,
+            detour: #state_type::Undefined,
+            dependencies: None,
         };
 
         #[derive(Clone)]
@@ -193,6 +209,7 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
             start: #state_type,
             stop: #state_type,
             transitions: [Transition<#state_type,#event_type>; #transition_count],
+            signal: Option<Source<u16>>,
         }
 
         type #name = #machine_type<#state_type,#event_type>;
@@ -200,28 +217,32 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
         impl StateMachine<#state_type,#event_type> for #machine_type<#state_type,#event_type>
         where #state_type: Default {
 
-            /// This is new.
             fn new(start: #state_type, stop: #state_type) -> Self {
                 #machine_type {
                     state: start,
                     start: start,
                     stop: stop,
+                    signal: None,
                     transitions: [
                         #(#array)*
                     ],
                 }
             }
 
+
             fn state(&self) -> #state_type {
                 self.state
             }
 
-            fn set_state(&mut self, state: #state_type) {
-                self.state = state;
-            }
-
             fn reset(&mut self) {
                 self.state = self.start;
+            }
+
+        }
+
+        impl ModifiableStateMachine<#state_type,#event_type> for #machine_type<#state_type,#event_type> {
+            fn set_state(&mut self, state: #state_type) {
+                self.state = state;
             }
 
             fn lookup(&self, state: &#state_type, event: &#event_type) -> &Transition<#state_type,#event_type> {
@@ -234,7 +255,25 @@ pub fn StateMachine(item: TokenStream) -> TokenStream {
                 &self.transitions[idx]
             }
 
+            fn mut_lookup(&mut self, state: &#state_type, event: &#event_type) -> &mut Transition<#state_type,#event_type> {
+                use #state_type::*;
+                use #event_type::*;
+                let idx: usize = match (state, event) {
+                    #(#lookup_list)*
+                    (_,_) => panic!("No mutable access on undefined transitions")
+                };
+                &mut self.transitions[idx]
+            }
+
+            fn last_transition_signal(&self) -> &Option<Signal<u16>> {
+                &self.last_signal
+            }
+
+            fn set_last_transition_signal(&mut self, signal: Option<Signal<u16>>) {
+                self.last_signal = signal;
+            }
         }
+
     };
     stream.extend(proc_macro::TokenStream::from(state_machine));
 

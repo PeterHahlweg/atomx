@@ -13,4 +13,4 @@ description = "Thread safe data structures based on atomic data types."
 
 
 [dependencies]
-atomx-macro = { path = "macro" }
+fsm = { path = "macro/fsm" }
