@@ -10,9 +10,9 @@ pub use source::Source;
 pub use sink::Sink;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum SinkState {
+pub enum SyncState {
     AllGone,
-    Consuming,
+    Receiving,
     Ready
 }
 
@@ -107,7 +107,7 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
         self.acks.store(acks, Ordering::SeqCst)
     }
 
-    fn decrement_acks(&self) {
+    fn acknowledge(&self) {
         self.acks.fetch_sub(1, Ordering::SeqCst);
     }
 

@@ -2,7 +2,6 @@ use super::*;
 use loom::Arc;
 
 // Source
-#[derive(Clone, Debug)]
 pub struct Source<T:Send> {
     signal: Arc<Signal<T>>,
     store: Option<Box<T>>,
@@ -27,9 +26,9 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         }
     }
 
-    pub fn send(&mut self, signal: &T) -> SinkState {
-        use SinkState::*;
-        let state = self.try_acknowledge();
+    pub fn send(&mut self, signal: &T) -> SyncState {
+        use SyncState::*;
+        let state = self.try_sync();
         if state == Ready {
             self.store(signal);
             self.swap()
@@ -37,9 +36,9 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         state
     }
 
-    pub fn modify(&mut self, closure: &mut dyn FnMut(&mut T)) -> SinkState {
-        use SinkState::*;
-        let state = self.try_acknowledge();
+    pub fn modify(&mut self, closure: &mut dyn FnMut(&mut T)) -> SyncState {
+        use SyncState::*;
+        let state = self.try_sync();
         if state == Ready {
             closure(self.store.as_mut().expect("always valid data"));
             self.swap()
@@ -47,7 +46,7 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         state
     }
 
-    pub fn sink_count(&self) -> u32 {
+    fn sink_count(&self) -> u32 {
         // the expectation here is, that this count does not change often
         Arc::strong_count(&self.signal) as u32 -1
     }
@@ -79,13 +78,13 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         self.store = Some(self.signal.swap(new));
     }
 
-    fn try_acknowledge(&self) -> SinkState {
-        use SinkState::*;
+    fn try_sync(&self) -> SyncState {
+        use SyncState::*;
         let mut state = Ready;
-        if self.is_synced {
+        if self.is_synced() {
             state = match self.sink_count() {
                 1.. => match self.signal.acks_count() {
-                    1.. => Consuming,
+                    1.. => Receiving,
                     0   => {
                         self.signal.reset_acks(self.sink_count());
                         Ready
