@@ -18,7 +18,7 @@ pub enum SyncState {
 
 
 pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
-let source = Source::from(T::default());
+    let source = Source::from(T::default());
     let sink = Sink::from(&source);
     (source, sink)
 }

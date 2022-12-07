@@ -14,7 +14,23 @@ pub enum SinkState {
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
     signal: Arc<Signal<T>>,
     last_id: Cell<u64>,
+
+    /// This is a regular bool, as the sync behavior can only be defined at object creation,
+    /// such that multiple signals can exist with different sync behavior.
     is_synced: bool
+}
+
+pub trait SinkSync {
+    /// In case the receiver needs to know if the synced signal has changed but without reading the
+    /// value, this function will read the memory id and compare it to the latest one. If they
+    /// differ, a change has happened. This will not guaranty that the value actually changed,
+    /// but the sender send a new signal which may be different.
+    ///
+    /// In case the signal is not synced, this function will return always true.
+    fn changed(&self) -> bool;
+
+    /// Indicates if the signal is synchronized.
+    fn is_synced(&self) -> bool;
 }
 
 // impl Sink
@@ -36,7 +52,7 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
     /// to copy have a look at [process].
     pub fn receive(&self) -> T {
         let (value, id) = self.signal.value();
-        if self.is_synced { self.acknowledge(id) }
+        if self.is_synced() { self.acknowledge(id) }
         value
     }
 
@@ -46,7 +62,7 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
     /// synced).
     pub fn process(&self, closure: &mut dyn FnMut(&T)) {
         let id = self.signal.modify(closure);
-        if self.is_synced { self.acknowledge(id) }
+        if self.is_synced() { self.acknowledge(id) }
     }
 
     /// When the signal is synced, this is used to inform the Sender that the Sink has been received
@@ -58,18 +74,15 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
         self.last_id.set(id)
     }
 
-    /// In case the receiver needs to know if the synced signal has changed but without reading the
-    /// value, this function will read the memory id and compare it to the latest one. If they
-    /// differ, a change has happened. This will not guaranty that the value actually changed,
-    /// but the sender send a new signal which may be different.
-    ///
-    /// In case the signal is not synced, this function will return always true.
-    pub fn changed(&self) -> bool {
+}
+
+impl<T> SinkSync for Sink<T>  where T: Clone + Sync + Send + Default {
+
+    fn changed(&self) -> bool {
         (! self.is_synced) || (self.signal.id() != self.last_id.get())
     }
 
-    /// Indicates if the signal is synchronized.
-    pub fn is_synced(&self) -> bool {
+    fn is_synced(&self) -> bool {
         self.is_synced
     }
 }
