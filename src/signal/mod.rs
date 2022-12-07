@@ -23,6 +23,19 @@ pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Defaul
     (source, sink)
 }
 
+pub trait SyncSignal<T> where T: Send + Sync + Clone + Default {
+    fn sync(self) -> Self;
+}
+
+impl<T> SyncSignal<T> for (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
+    fn sync(mut self) -> Self {
+        self.0.is_synced = true;
+        self.1.is_synced = true;
+        self
+    }
+}
+
+
 /// Creates a pair of source and sink, which are performing a handshake.
 /// This handshake guaranties, that the source will not update the value until all sinks have seen
 /// the value.

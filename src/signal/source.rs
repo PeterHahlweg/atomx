@@ -5,7 +5,7 @@ use loom::Arc;
 pub struct Source<T:Send> {
     signal: Arc<Signal<T>>,
     store: Option<Box<T>>,
-    is_synced: bool,
+    pub(super) is_synced: bool,
     on_received: Option<Box<dyn FnMut(&T)>>
 }
 
@@ -132,8 +132,9 @@ fn assume_on_received_is_not_executed_if_not_synced() {
 #[test]
 fn assume_on_received_provides_expected_value() {
     use crate::signal;
+
     // create a synced signal
-    let (mut src, snk) = signal::create_synced();
+    let (mut src, snk) = signal::create().sync();
     let snk2 = Sink::from(&src);
     src.on_received(|value| assert_eq!(*value, 0)); // assert i32 default, which is 0
     // send will call on_received, if set and signal is synced

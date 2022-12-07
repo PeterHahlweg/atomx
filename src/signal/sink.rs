@@ -17,7 +17,7 @@ pub struct Sink<T> where T: Clone + Sync + Send + Default {
 
     /// This is a regular bool, as the sync behavior can only be defined at object creation,
     /// such that multiple signals can exist with different sync behavior.
-    is_synced: bool
+    pub(super) is_synced: bool
 }
 
 pub trait SinkSync {
@@ -97,8 +97,8 @@ fn changed_is_true_on_create() {
 #[test]
 fn changed_is_true_if_create_synced() {
     use crate::signal;
-    // create a not synced signal
-    let (_, snk) = signal::create_synced::<f32>();
+    // create a synced signal
+    let (_, snk) = signal::create::<f32>().sync();
     assert!(snk.changed()); // because all data is new
 }
 
@@ -117,7 +117,7 @@ fn changed_is_always_true_if_not_synced() {
 fn changed_if_synced() {
     use crate::signal;
     // create a synced signal
-    let (mut src, snk) = signal::create_synced::<f32>();
+    let (mut src, snk) = signal::create::<f32>().sync();
     src.send(&0.0);
     snk.receive();
     assert!( ! snk.changed()); // because received latest and sync is enabled
