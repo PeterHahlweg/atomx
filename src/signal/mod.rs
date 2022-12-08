@@ -1,5 +1,6 @@
 pub mod sink;
 pub mod source;
+pub mod synced;
 pub mod loom;
 
 use crossbeam_utils::atomic::AtomicCell;
@@ -9,41 +10,8 @@ use loom::atomic::{AtomicU32, Ordering};
 pub use source::Source;
 pub use sink::Sink;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum SyncState {
-    AllGone,
-    Receiving,
-    Ready
-}
-
-
 pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
     let source = Source::from(T::default());
-    let sink = Sink::from(&source);
-    (source, sink)
-}
-
-pub trait SyncSignal<T> where T: Send + Sync + Clone + Default {
-    fn sync(self) -> Self;
-}
-
-impl<T> SyncSignal<T> for (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
-    fn sync(mut self) -> Self {
-        self.0.is_synced = true;
-        self.1.is_synced = true;
-        self
-    }
-}
-
-
-/// Creates a pair of source and sink, which are performing a handshake.
-/// This handshake guaranties, that the source will not update the value until all sinks have seen
-/// the value.
-/// This is probably in most cases a special use case and increases the overhead of the
-/// communication.
-/// In a case where the source can not send, the control is given back to the user.
-pub fn create_synced<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
-    let source = Source::with_sync(T::default());
     let sink = Sink::from(&source);
     (source, sink)
 }
