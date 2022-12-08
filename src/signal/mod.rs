@@ -5,7 +5,6 @@ pub mod loom;
 
 use crossbeam_utils::atomic::AtomicCell;
 use haphazard::{AtomicPtr, HazardPointer};
-use loom::atomic::{AtomicU32, Ordering};
 
 pub use source::Source;
 pub use sink::Sink;
@@ -18,14 +17,13 @@ pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Defaul
 
 struct Signal<T: Send> {
     ptr: Option<AtomicPtr<T>>, // Option required to retire on drop
-    acks: AtomicU32,
     hp: AtomicCell<HazardPointer<'static>>
 }
 
 use std::fmt::Debug;
 impl<T> Debug for Signal<T> where T: Send {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Signal").field("ptr", &self.ptr).field("acks", &self.acks).field("hp", &"invisible").finish()
+        f.debug_struct("Signal").field("ptr", &self.ptr).field("hp", &"invisible").finish()
     }
 }
 
@@ -34,7 +32,6 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
     fn new(value: T) -> Self {
         Signal {
             ptr: Some(AtomicPtr::from(Box::new(value))),
-            acks: AtomicU32::new(0),
             hp: AtomicCell::new(HazardPointer::new()),
         }
     }
@@ -84,19 +81,7 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
         }
     }
 
-    fn reset_acks(&self, acks: u32) {
-        self.acks.store(acks, Ordering::SeqCst)
-    }
-
-    fn acknowledge(&self) {
-        self.acks.fetch_sub(1, Ordering::SeqCst);
-    }
-
-    fn acks_count(&self) -> u32 {
-        self.acks.load(Ordering::SeqCst)
-    }
-
-    fn id(&self) -> u64 {
+    fn box_id(&self) -> u64 {
         match &self.ptr {
             Some(ptr) => ptr.load_ptr() as u64,
             None => unreachable!(),
@@ -157,7 +142,6 @@ fn source_and_sinks_are_connected() {
 fn sizes() {
     use super::signal::{Signal, Source, Sink};
     println!("size_of");
-    println!("AtomicU32:       {:3}b", std::mem::size_of::<AtomicU32>());
     println!("AtomicCell<HP>:  {:3}b", std::mem::size_of::<AtomicCell<HazardPointer<'static>>>());
     println!("AtomicPtr<Logic>:{:3}b", std::mem::size_of::<AtomicPtr<u32>>());
     println!("Sink<u32>:     {:3}b", std::mem::size_of::<Sink<u32>>());

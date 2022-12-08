@@ -1,6 +1,7 @@
 use crate::source;
 use crate::sink;
 use crate::loom::Arc;
+use crate::loom::atomic::{AtomicU32, Ordering};
 
 
 #[derive(Debug, PartialEq, Eq)]
@@ -11,7 +12,8 @@ pub enum SyncState {
 }
 
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
-    inner: sink::Sink<T>
+    inner: sink::Sink<T>,
+    acks: Arc<AtomicU32>,
 }
 
 impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
@@ -19,7 +21,10 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// This is the only way to create a Sink. That's necessary to guaranty that both share the
     /// same sync property.
     pub fn from(source: &Source<T>) -> Self {
-        Sink {inner: sink::Sink::from(&source.inner)}
+        Sink {
+            inner: sink::Sink::from(&source.inner),
+            acks: source.acks.clone()
+        }
     }
 
     /// Returns a copy of the received signal value.
@@ -44,13 +49,13 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// the signal.
     fn acknowledge(&self, id: u64) {
         if self.inner.last_id.get() != id {
-            self.inner.signal.acknowledge()
+            self.acks.fetch_sub(1, Ordering::SeqCst);
         }
         self.inner.last_id.set(id)
     }
 
     pub fn changed(&self) -> bool {
-        self.inner.signal.id() != self.inner.last_id.get()
+        self.inner.signal.box_id() != self.inner.last_id.get()
     }
 }
 
@@ -58,12 +63,13 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
 // TODO: fix wrapper type and inner type of source, moved sync related functions
 pub struct Source<T> where T: Clone + Sync + Send + Default {
     inner: source::Source<T>,
+    acks: Arc<AtomicU32>,
     on_received: Option<Box<dyn FnMut(&T)>>,
 }
 
 impl<T> Source<T> where T: Clone + Sync + Send + Default {
     pub fn sink(&self) -> Sink<T> {
-        Sink {inner: sink::Sink::from(&self.inner)}
+        Sink::from(self)
     }
 
 
@@ -81,10 +87,10 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
     fn try_sync(&self) -> SyncState {
         use SyncState::*;
         match self.sink_count() {
-            1.. => match self.inner.signal.acks_count() {
+            1.. => match self.acks_count() {
                 1.. => Receiving,
                 0   => {
-                    self.inner.signal.reset_acks(self.sink_count());
+                    self.reset_acks(self.sink_count());
                     Ready
                 }
             },
@@ -118,12 +124,21 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         state
     }
 
+    fn reset_acks(&self, acks: u32) {
+        self.acks.store(acks, Ordering::SeqCst)
+    }
+
+    fn acks_count(&self) -> u32 {
+        self.acks.load(Ordering::SeqCst)
+    }
+
 }
 
 pub mod signal {
-    use crate::sink;
     use crate::source;
     use super::{Source, Sink};
+    use crate::loom::Arc;
+    use crate::loom::atomic::AtomicU32;
 
     /// Create a pair of source and sink, which are performing a handshake.
     /// This handshake guaranties, that the source will not update the value until all sinks have
@@ -134,9 +149,10 @@ pub mod signal {
     pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
         let source = Source{
             inner: source::Source::with_sync(T::default()),
+            acks: Arc::new(AtomicU32::new(0)),
             on_received: None
         };
-        let sink = Sink {inner: sink::Sink::from(&source.inner)};
+        let sink = Sink::from(&source);
         (source, sink)
     }
 }
