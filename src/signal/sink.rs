@@ -1,12 +1,11 @@
 use super::*;
 use loom::Arc;
-use std::cell::Cell;
+
 
 // Sink
 #[derive(Clone, Debug)]
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
-    pub(super) signal: Arc<Signal<T>>,
-    pub(super) last_id: Cell<u64>,
+    signal: Arc<Signal<T>>
 }
 
 
@@ -17,10 +16,7 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
     /// This is the only way to create a Sink. That's necessary to guaranty that both share the
     /// same sync property.
     pub fn from(source: &Source<T>) -> Self {
-        Sink {
-            signal: source.signal(),
-            last_id: Cell::new(0),
-        }
+        Sink { signal: source.signal() }
     }
 
     /// Returns a copy of the received signal value.
@@ -41,19 +37,3 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
 }
 
 
-#[test]
-fn changed_is_true_if_create_synced() {
-    // create a synced signal
-    let (_, snk) = synced::signal::create::<f32>();
-    assert!(snk.changed()); // because all data is new
-}
-
-
-#[test]
-fn changed_if_synced() {
-    // create a synced signal
-    let (mut src, snk) = synced::signal::create::<f32>();
-    src.send(&0.0);
-    snk.receive();
-    assert!( ! snk.changed()); // because received latest and sync is enabled
-}

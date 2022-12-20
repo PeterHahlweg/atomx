@@ -20,13 +20,6 @@ struct Signal<T: Send> {
     hp: AtomicCell<HazardPointer<'static>>
 }
 
-use std::fmt::Debug;
-impl<T> Debug for Signal<T> where T: Send {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Signal").field("ptr", &self.ptr).field("hp", &"invisible").finish()
-    }
-}
-
 // impl Signal
 impl<T: Clone+Default+Send+Sync> Signal<T> {
     fn new(value: T) -> Self {
@@ -101,6 +94,13 @@ impl<T: Send> Drop for Signal<T> {
     }
 }
 
+use std::fmt::Debug;
+impl<T> Debug for Signal<T> where T: Send {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Signal").field("ptr", &self.ptr).field("hp", &"invisible").finish()
+    }
+}
+
 
 #[test]
 fn read_source_value() {
@@ -143,8 +143,8 @@ fn sizes() {
     use super::signal::{Signal, Source, Sink};
     println!("size_of");
     println!("AtomicCell<HP>:  {:3}b", std::mem::size_of::<AtomicCell<HazardPointer<'static>>>());
-    println!("AtomicPtr<Logic>:{:3}b", std::mem::size_of::<AtomicPtr<u32>>());
-    println!("Sink<u32>:     {:3}b", std::mem::size_of::<Sink<u32>>());
-    println!("Source<u32>:   {:3}b", std::mem::size_of::<Source<u32>>());
-    println!("Signal<u32>:   {:3}b", std::mem::size_of::<Signal<u32>>());
+    println!("AtomicPtr<u32>:  {:3}b", std::mem::size_of::<AtomicPtr<u32>>());
+    println!("Sink<u32>:       {:3}b", std::mem::size_of::<Sink<u32>>());
+    println!("Source<u32>:     {:3}b", std::mem::size_of::<Source<u32>>());
+    println!("Signal<u32>:     {:3}b", std::mem::size_of::<Signal<u32>>());
 }

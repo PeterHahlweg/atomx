@@ -1,7 +1,10 @@
-use crate::source;
-use crate::sink;
-use crate::loom::Arc;
-use crate::loom::atomic::{AtomicU32, Ordering};
+use crate::{
+    loom::Arc,
+    loom::atomic::{AtomicU32, Ordering},
+    signal::Signal,
+    source,
+};
+use std::cell::Cell;
 
 
 #[derive(Debug, PartialEq, Eq)]
@@ -12,8 +15,9 @@ pub enum SyncState {
 }
 
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
-    inner: sink::Sink<T>,
+    signal: Arc<Signal<T>>,
     acks: Arc<AtomicU32>,
+    last_id: Cell<u64>,
 }
 
 impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
@@ -22,8 +26,9 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// same sync property.
     pub fn from(source: &Source<T>) -> Self {
         Sink {
-            inner: sink::Sink::from(&source.inner),
-            acks: source.acks.clone()
+            signal: source.inner.signal(),
+            acks: source.acks.clone(),
+            last_id: Cell::new(0),
         }
     }
 
@@ -31,7 +36,7 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// This is especially useful for small or primitive types. If the signal data is to expansive
     /// to copy have a look at [process].
     pub fn receive(&self) -> T {
-        let (value, id) = self.inner.signal.value();
+        let (value, id) = self.signal.value();
         self.acknowledge(id);
         value
     }
@@ -41,26 +46,25 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// creates back pressure onto the sender if processing takes to much time (even if not
     /// synced).
     pub fn process(&self, closure: &mut dyn FnMut(&T)) {
-        let id = self.inner.signal.modify(closure);
+        let id = self.signal.modify(closure);
         self.acknowledge(id)
+    }
+
+    pub fn changed(&self) -> bool {
+        self.signal.box_id() != self.last_id.get()
     }
 
     /// When the signal is synced, this is used to inform the Sender that the Sink has been received
     /// the signal.
     fn acknowledge(&self, id: u64) {
-        if self.inner.last_id.get() != id {
+        if self.last_id.get() != id {
             self.acks.fetch_sub(1, Ordering::SeqCst);
         }
-        self.inner.last_id.set(id)
-    }
-
-    pub fn changed(&self) -> bool {
-        self.inner.signal.box_id() != self.inner.last_id.get()
+        self.last_id.set(id)
     }
 }
 
 
-// TODO: fix wrapper type and inner type of source, moved sync related functions
 pub struct Source<T> where T: Clone + Sync + Send + Default {
     inner: source::Source<T>,
     acks: Arc<AtomicU32>,
@@ -71,7 +75,6 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
     pub fn sink(&self) -> Sink<T> {
         Sink::from(self)
     }
-
 
     pub fn on_received(&mut self, closure: impl FnMut(&T) + 'static) {
         self.on_received = Some(Box::new(closure))
@@ -161,12 +164,11 @@ pub mod signal {
 fn assume_on_received_provides_expected_value() {
     use crate::synced;
 
-    // create a synced signal
     let (mut src, snk) = synced::signal::create();
     let snk2 = src.sink();
     snk2.changed();
-    src.on_received(|value| assert!(0.eq(value))); // assert i32 default, which is 0
-    // send will call on_received, if set and signal is synced
+    src.on_received(|value| assert!(i32::default().eq(value)));
+    // send will call on_received callback, if some
     src.send(&1); // should give 0 in on_received, which is call in send
     src.on_received(|value| assert!(1.eq(value))); // overwrite, and expect 1 for next call
     snk.receive();
@@ -174,3 +176,27 @@ fn assume_on_received_provides_expected_value() {
     src.send(&2); // should give 1 in on_received
 }
 
+#[test]
+fn changed_is_true_if_create_synced() {
+    let (_, snk) = crate::synced::signal::create::<f32>();
+    assert!(snk.changed()); // because all data is new
+}
+
+
+#[test]
+fn changed_if_synced() {
+    let (mut src, snk) = crate::synced::signal::create::<f32>();
+    src.send(&0.0);
+    snk.receive();
+    assert!( ! snk.changed()); // because received latest value already
+}
+
+#[test]
+#[ignore = "only show sizes"]
+fn sizes() {
+    use crate::synced::{Signal, Source, Sink};
+    println!("size_of");
+    println!("Sink<u32>:       {:3}b", std::mem::size_of::<Sink<u32>>());
+    println!("Source<u32>:     {:3}b", std::mem::size_of::<Source<u32>>());
+    println!("Signal<u32>:     {:3}b", std::mem::size_of::<Signal<u32>>());
+}
