@@ -15,7 +15,6 @@ description = "Thread safe data structures based on atomic data types."
 [dependencies]
 fsm = { path = "macro/fsm" }
 haphazard = { git = "https://github.com/jonhoo/haphazard", rev = "6bcebbd" }
-crossbeam-utils = "0.8.11"
 
 
 [target.'cfg(loom)'.dependencies]

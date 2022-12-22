@@ -3,7 +3,6 @@ pub mod source;
 pub mod synced;
 pub mod loom;
 
-use crossbeam_utils::atomic::AtomicCell;
 use haphazard::{AtomicPtr, HazardPointer};
 
 pub use source::Source;
@@ -17,15 +16,13 @@ pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Defaul
 
 struct Signal<T: Send> {
     ptr: Option<AtomicPtr<T>>, // Option required to retire on drop
-    hp: AtomicCell<HazardPointer<'static>>
 }
 
 // impl Signal
 impl<T: Clone+Default+Send+Sync> Signal<T> {
     fn new(value: T) -> Self {
         Signal {
-            ptr: Some(AtomicPtr::from(Box::new(value))),
-            hp: AtomicCell::new(HazardPointer::new()),
+            ptr: Some(AtomicPtr::from(Box::new(value)))
         }
     }
 
@@ -46,15 +43,15 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
         unsafe { Box::<T>::from_raw(replaced_ptr) }
     }
 
-    fn value(&self) -> (T, u64) {
+    fn value(&self, hp: &mut HazardPointer<'static>) -> (T, u64) {
         let mut val = T::default();
-        let id = self.modify( &mut |value|{
+        let id = self.modify(hp, &mut |value|{
             val = value.clone()
         });
         (val, id)
     }
 
-    fn modify(&self, closure: &mut dyn FnMut(&T)) -> u64 {
+    fn modify(&self, hp: &mut HazardPointer<'static>, closure: &mut dyn FnMut(&T)) -> u64 {
         match &self.ptr {
             Some(ptr) => {
                 // one HazardPointer for each signal exists, as a &mut is required the pointer to
@@ -65,7 +62,6 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
                 //         - the data is never read or written to outside this function
                 //         - data is always initialized through the new function
                 //         - safe to unwrap here, as the pointer will never be null
-                let hp = unsafe {self.hp.as_ptr().as_mut()}.unwrap();
                 let val = ptr.safe_load(hp).expect("not null");
                 closure(val);
                 ptr.load_ptr() as u64
@@ -86,7 +82,9 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
 // drop Signal
 impl<T: Send> Drop for Signal<T> {
     fn drop(&mut self) {
-        // Safety: AtomicPtr has used the global domain, as required by haphazard::AtomicPtr::retire
+        // Safety:
+        // - AtomicPtr has used the global domain, as required by haphazard::AtomicPtr::retire
+        // - AtomicPtr is only used in signal
         unsafe{ self.ptr
             .take().expect("always some AtomicPtr")
             .retire();
@@ -106,7 +104,8 @@ impl<T> Debug for Signal<T> where T: Send {
 fn read_source_value() {
     let src = Signal::new(5);
     let mut counter = 0;
-    src.modify(&mut |val|{
+    let mut hp = HazardPointer::new();
+    src.modify(&mut hp, &mut |val|{
         counter += val
     });
     assert_eq!(counter, 5);
@@ -127,8 +126,8 @@ fn sink_and_source_does_not_panic_on_immediate_drop() {
 
 #[test]
 fn source_and_sinks_are_connected() {
-    let (mut source, sink1) = super::signal::create::<bool>();
-    let sink2 = Sink::from(&source);
+    let (mut source, mut sink1) = super::signal::create::<bool>();
+    let mut sink2 = source.sink();
     for i in 0..10 {
         let v = i%2 == 1;
         source.send(&v);
@@ -141,10 +140,15 @@ fn source_and_sinks_are_connected() {
 #[ignore = "only show sizes"]
 fn sizes() {
     use super::signal::{Signal, Source, Sink};
+    use std::mem::size_of;
     println!("size_of");
-    println!("AtomicCell<HP>:  {:3}b", std::mem::size_of::<AtomicCell<HazardPointer<'static>>>());
-    println!("AtomicPtr<u32>:  {:3}b", std::mem::size_of::<AtomicPtr<u32>>());
-    println!("Sink<u32>:       {:3}b", std::mem::size_of::<Sink<u32>>());
-    println!("Source<u32>:     {:3}b", std::mem::size_of::<Source<u32>>());
-    println!("Signal<u32>:     {:3}b", std::mem::size_of::<Signal<u32>>());
+    println!("Sink<u32>:         {:3}b", size_of::<Sink<u32>>());
+    println!("Source<u32>:       {:3}b", size_of::<Source<u32>>());
+    println!("Signal<u32>:       {:3}b", size_of::<Signal<u32>>());
+    println!("channel<u32> cost: {:3}b", size_of::<Signal<u32>>() +
+                                       size_of::<Source<u32>>() +
+                                       size_of::<Sink<u32>>() +
+                                       (size_of::<u32>() *2)
+    );
+
 }

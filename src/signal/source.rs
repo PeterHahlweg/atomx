@@ -60,9 +60,9 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         self.store = Some(self.signal.swap(new));
     }
 
-    // pub fn sink(&self) -> Sink<T> {
-    //     Sink::from(self)
-    // }
+    pub fn sink(&self) -> Sink<T> {
+        Sink::from(self)
+    }
 
 }
 

@@ -5,6 +5,7 @@ use crate::{
     source,
 };
 use std::cell::Cell;
+use haphazard::HazardPointer;
 
 
 #[derive(Debug, PartialEq, Eq)]
@@ -16,6 +17,7 @@ pub enum SyncState {
 
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
     signal: Arc<Signal<T>>,
+    hp: HazardPointer<'static>,
     acks: Arc<AtomicU32>,
     last_id: Cell<u64>,
 }
@@ -27,6 +29,7 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     pub fn from(source: &Source<T>) -> Self {
         Sink {
             signal: source.inner.signal(),
+            hp: HazardPointer::new(),
             acks: source.acks.clone(),
             last_id: Cell::new(0),
         }
@@ -35,8 +38,8 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// Returns a copy of the received signal value.
     /// This is especially useful for small or primitive types. If the signal data is to expansive
     /// to copy have a look at [process].
-    pub fn receive(&self) -> T {
-        let (value, id) = self.signal.value();
+    pub fn receive(&mut self) -> T {
+        let (value, id) = self.signal.value(&mut self.hp);
         self.acknowledge(id);
         value
     }
@@ -45,8 +48,8 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// an immutable reference given by a closure. This could drastically reduce memory usage, but
     /// creates back pressure onto the sender if processing takes to much time (even if not
     /// synced).
-    pub fn process(&self, closure: &mut dyn FnMut(&T)) {
-        let id = self.signal.modify(closure);
+    pub fn process(&mut self, closure: &mut dyn FnMut(&T)) {
+        let id = self.signal.modify(&mut self.hp, closure);
         self.acknowledge(id)
     }
 
@@ -164,8 +167,8 @@ pub mod signal {
 fn assume_on_received_provides_expected_value() {
     use crate::synced;
 
-    let (mut src, snk) = synced::signal::create();
-    let snk2 = src.sink();
+    let (mut src, mut snk) = synced::signal::create();
+    let mut snk2 = src.sink();
     snk2.changed();
     src.on_received(|value| assert!(i32::default().eq(value)));
     // send will call on_received callback, if some
@@ -185,7 +188,7 @@ fn changed_is_true_if_create_synced() {
 
 #[test]
 fn changed_if_synced() {
-    let (mut src, snk) = crate::synced::signal::create::<f32>();
+    let (mut src, mut snk) = crate::synced::signal::create::<f32>();
     src.send(&0.0);
     snk.receive();
     assert!( ! snk.changed()); // because received latest value already
@@ -195,8 +198,14 @@ fn changed_if_synced() {
 #[ignore = "only show sizes"]
 fn sizes() {
     use crate::synced::{Signal, Source, Sink};
+    use std::mem::size_of;
     println!("size_of");
-    println!("Sink<u32>:       {:3}b", std::mem::size_of::<Sink<u32>>());
-    println!("Source<u32>:     {:3}b", std::mem::size_of::<Source<u32>>());
-    println!("Signal<u32>:     {:3}b", std::mem::size_of::<Signal<u32>>());
+    println!("Sink<u32>:         {:3}b", size_of::<Sink<u32>>());
+    println!("Source<u32>:       {:3}b", size_of::<Source<u32>>());
+    println!("Signal<u32>:       {:3}b", size_of::<Signal<u32>>());
+    println!("channel<u32> cost: {:3}b", size_of::<Signal<u32>>() +
+                                         size_of::<Source<u32>>() +
+                                         size_of::<Sink<u32>>() +
+                                         (size_of::<u32>() *2)
+    );
 }
