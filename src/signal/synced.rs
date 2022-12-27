@@ -71,7 +71,6 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
 pub struct Source<T> where T: Clone + Sync + Send + Default {
     inner: source::Source<T>,
     acks: Arc<AtomicU32>,
-    on_received: Option<Box<dyn FnMut(&T)>>,
 }
 
 impl<T> Source<T> where T: Clone + Sync + Send + Default {
@@ -79,16 +78,6 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         Sink::from(self)
     }
 
-    pub fn on_received(&mut self, closure: impl FnMut(&T) + 'static) {
-        self.on_received = Some(Box::new(closure))
-    }
-
-    fn call_on_received(&mut self) {
-        match &mut self.on_received {
-            Some(callback) => callback(self.inner.store.as_ref().expect("always some value")),
-            None => {}
-        }
-    }
 
     fn try_sync(&self) -> SyncState {
         use SyncState::*;
@@ -114,7 +103,6 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         let state = self.try_sync();
         if state == Ready {
             self.inner.send(signal);
-            self.call_on_received();
         }
         state
     }
@@ -125,7 +113,6 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         if state == Ready {
             closure(self.inner.store.as_mut().expect("always valid data"));
             self.inner.swap();
-            self.call_on_received();
         }
         state
     }
@@ -156,27 +143,10 @@ pub mod signal {
         let source = Source{
             inner: source::Source::with_sync(T::default()),
             acks: Arc::new(AtomicU32::new(0)),
-            on_received: None
         };
         let sink = Sink::from(&source);
         (source, sink)
     }
-}
-
-#[test]
-fn assume_on_received_provides_expected_value() {
-    use crate::synced;
-
-    let (mut src, mut snk) = synced::signal::create();
-    let mut snk2 = src.sink();
-    snk2.changed();
-    src.on_received(|value| assert!(i32::default().eq(value)));
-    // send will call on_received callback, if some
-    src.send(&1); // should give 0 in on_received, which is call in send
-    src.on_received(|value| assert!(1.eq(value))); // overwrite, and expect 1 for next call
-    snk.receive();
-    snk2.receive();
-    src.send(&2); // should give 1 in on_received
 }
 
 #[test]
