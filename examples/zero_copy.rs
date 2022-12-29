@@ -32,12 +32,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop {
             // this is a zero copy write, we directly modifying the underlying memory here
             let state = source.modify(&mut |dummy| {
+                if dummy.id % 100 == 0 { println!("\nsrc dummy.id: {}", dummy.id) }
+                else { print!(".") }
                 // - counter intuitive, dummy id needs to be increased by 2
                 // - because the signal has two memory slots and write will modify in place
                 // - in combination with incrementing the id in one slot beforehand this
                 //   will give an id incrementing by 1 each cycle
-                if dummy.id % 100 == 0 { println!("\nsrc dummy.id: {}", dummy.id) }
-                else {print!(".")}
                 dummy.id += 2;
             });
             use synced::SyncState::*;

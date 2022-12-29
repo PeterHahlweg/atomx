@@ -54,14 +54,6 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
     fn modify(&self, hp: &mut HazardPointer<'static>, closure: &mut dyn FnMut(&T)) -> u64 {
         match &self.ptr {
             Some(ptr) => {
-                // one HazardPointer for each signal exists, as a &mut is required the pointer to
-                // the HP is converted into a reference, which is unsafe
-                // Safety: - the pointer is always valid as it is part of the object and is never
-                //           moved or taken or dropped separately
-                //         - the pointer is never aliased
-                //         - the data is never read or written to outside this function
-                //         - data is always initialized through the new function
-                //         - safe to unwrap here, as the pointer will never be null
                 let val = ptr.safe_load(hp).expect("not null");
                 closure(val);
                 ptr.load_ptr() as u64
@@ -141,11 +133,11 @@ fn source_and_sinks_are_connected() {
 fn sizes() {
     use super::signal::{Signal, Source, Sink};
     use std::mem::size_of;
-    println!("size_of");
+    println!("size_of signal");
     println!("Sink<u32>:         {:3}b", size_of::<Sink<u32>>());
     println!("Source<u32>:       {:3}b", size_of::<Source<u32>>());
     println!("Signal<u32>:       {:3}b", size_of::<Signal<u32>>());
-    println!("channel<u32> cost: {:3}b", size_of::<Signal<u32>>() +
+    println!("signal cost:       {:3}b", size_of::<Signal<u32>>() +
                                        size_of::<Source<u32>>() +
                                        size_of::<Sink<u32>>() +
                                        (size_of::<u32>() *2)

@@ -169,11 +169,11 @@ fn changed_if_synced() {
 fn sizes() {
     use crate::synced::{Signal, Source, Sink};
     use std::mem::size_of;
-    println!("size_of");
+    println!("size_of synced signal");
     println!("Sink<u32>:         {:3}b", size_of::<Sink<u32>>());
     println!("Source<u32>:       {:3}b", size_of::<Source<u32>>());
     println!("Signal<u32>:       {:3}b", size_of::<Signal<u32>>());
-    println!("channel<u32> cost: {:3}b", size_of::<Signal<u32>>() +
+    println!("signal cost:       {:3}b", size_of::<Signal<u32>>() +
                                          size_of::<Source<u32>>() +
                                          size_of::<Sink<u32>>() +
                                          (size_of::<u32>() *2)
