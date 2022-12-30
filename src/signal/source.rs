@@ -18,13 +18,6 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         }
     }
 
-    pub fn with_sync(value: T) -> Self {
-        Source {
-            signal: Arc::new(Signal::new(value)),
-            store: Some(Box::new(T::default())),
-        }
-    }
-
     pub fn send(&mut self, signal: &T) -> SyncState {
         self.store(signal);
         self.swap();
@@ -57,7 +50,8 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         //   and afterwards put some new value in
         // - as long as at no other point the value of store is taken
         let new = self.store.take().unwrap();
-        self.store = Some(self.signal.swap(new));
+        let old = self.signal.swap(new);
+        self.store = Some(old);
     }
 
     pub fn sink(&self) -> Sink<T> {

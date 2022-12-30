@@ -141,7 +141,7 @@ pub mod signal {
     /// In a case where the source can not send, the control is given back to the user.
     pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
         let source = Source{
-            inner: source::Source::with_sync(T::default()),
+            inner: source::Source::from(T::default()),
             acks: Arc::new(AtomicU32::new(0)),
         };
         let sink = Sink::from(&source);
@@ -170,10 +170,10 @@ fn sizes() {
     use crate::synced::{Signal, Source, Sink};
     use std::mem::size_of;
     println!("size_of synced signal");
-    println!("Sink<u32>:         {:3}b", size_of::<Sink<u32>>());
-    println!("Source<u32>:       {:3}b", size_of::<Source<u32>>());
-    println!("Signal<u32>:       {:3}b", size_of::<Signal<u32>>());
-    println!("signal cost:       {:3}b", size_of::<Signal<u32>>() +
+    println!("Sink<u32>:         {:3}B", size_of::<Sink<u32>>());
+    println!("Source<u32>:       {:3}B", size_of::<Source<u32>>());
+    println!("Signal<u32>:       {:3}B", size_of::<Signal<u32>>());
+    println!("signal cost:       {:3}B", size_of::<Signal<u32>>() +
                                          size_of::<Source<u32>>() +
                                          size_of::<Sink<u32>>() +
                                          (size_of::<u32>() *2)
