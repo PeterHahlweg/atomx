@@ -43,18 +43,18 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
         unsafe { Box::<T>::from_raw(replaced_ptr) }
     }
 
-    fn value(&self, hp: &mut HazardPointer<'static>) -> (T, u64) {
+    fn value(&self, guard: &mut HazardPointer<'static>) -> (T, u64) {
         let mut val = T::default();
-        let id = self.modify(hp, &mut |value|{
+        let id = self.modify(guard, &mut |value| {
             val = value.clone()
         });
         (val, id)
     }
 
-    fn modify(&self, hp: &mut HazardPointer<'static>, closure: &mut dyn FnMut(&T)) -> u64 {
+    fn modify(&self, guard: &mut HazardPointer<'static>, closure: &mut dyn FnMut(&T)) -> u64 {
         match &self.ptr {
             Some(ptr) => {
-                let val = ptr.safe_load(hp).expect("not null");
+                let val = ptr.safe_load(guard).expect("not null");
                 closure(val);
                 ptr.load_ptr() as u64
             }
@@ -87,7 +87,7 @@ impl<T: Send> Drop for Signal<T> {
 use std::fmt::Debug;
 impl<T> Debug for Signal<T> where T: Send {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Signal").field("ptr", &self.ptr).field("hp", &"invisible").finish()
+        f.debug_struct("Signal").field("ptr", &self.ptr).field("guard", &"invisible").finish()
     }
 }
 
@@ -96,8 +96,8 @@ impl<T> Debug for Signal<T> where T: Send {
 fn read_source_value() {
     let src = Signal::new(5);
     let mut counter = 0;
-    let mut hp = HazardPointer::new();
-    src.modify(&mut hp, &mut |val|{
+    let mut guard = HazardPointer::new();
+    src.modify(&mut guard, &mut |val|{
         counter += val
     });
     assert_eq!(counter, 5);
@@ -134,13 +134,13 @@ fn sizes() {
     use super::signal::{Signal, Source, Sink};
     use std::mem::size_of;
     println!("size_of signal");
-    println!("Sink<u32>:         {:3}b", size_of::<Sink<u32>>());
-    println!("Source<u32>:       {:3}b", size_of::<Source<u32>>());
-    println!("Signal<u32>:       {:3}b", size_of::<Signal<u32>>());
-    println!("signal cost:       {:3}b", size_of::<Signal<u32>>() +
-                                       size_of::<Source<u32>>() +
-                                       size_of::<Sink<u32>>() +
-                                       (size_of::<u32>() *2)
+    println!("Sink<u32>:         {:3}B", size_of::<Sink<u32>>());
+    println!("Source<u32>:       {:3}B", size_of::<Source<u32>>());
+    println!("Signal<u32>:       {:3}B", size_of::<Signal<u32>>());
+    println!("signal cost:       {:3}B", size_of::<Signal<u32>>() +
+                                         size_of::<Source<u32>>() +
+                                         size_of::<Sink<u32>>() +
+                                         (size_of::<u32>() *2)
     );
 
 }

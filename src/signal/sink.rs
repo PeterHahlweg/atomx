@@ -6,7 +6,7 @@ use haphazard::HazardPointer;
 // Sink
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
     signal: Arc<Signal<T>>,
-    hp: HazardPointer<'static>
+    guard: HazardPointer<'static>
 }
 
 
@@ -17,14 +17,14 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
     /// This is the only way to create a Sink. That's necessary to guaranty that both share the
     /// same sync property.
     pub fn from(source: &Source<T>) -> Self {
-        Sink { signal: source.signal(), hp: HazardPointer::new() }
+        Sink { signal: source.signal(), guard: HazardPointer::new() }
     }
 
     /// Returns a copy of the received signal value.
     /// This is especially useful for small or primitive types. If the signal data is to expansive
     /// to copy have a look at [process].
     pub fn receive(&mut self) -> T {
-        self.signal.value(&mut self.hp).0
+        self.signal.value(&mut self.guard).0
     }
 
     /// In contrast to [receive] this function allows the consumer to directly access the data via
@@ -32,14 +32,14 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
     /// creates back pressure onto the sender if processing takes to much time (even if not
     /// synced).
     pub fn process(&mut self, closure: &mut dyn FnMut(&T)) {
-        self.signal.modify(&mut self.hp, closure);
+        self.signal.modify(&mut self.guard, closure);
     }
 
 }
 
 impl<T> Clone for Sink<T> where T: Clone + Sync + Send + Default {
     fn clone(&self) -> Self {
-        Sink { signal: self.signal.clone(), hp: HazardPointer::new() }
+        Sink { signal: self.signal.clone(), guard: HazardPointer::new() }
     }
 }
 
