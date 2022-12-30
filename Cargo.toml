@@ -11,11 +11,8 @@ categories = ["concurrency"]
 readme = "README.md"
 description = "Thread safe data structures based on atomic data types."
 
-
 [dependencies]
-fsm = { path = "macro/fsm" }
 haphazard = { git = "https://github.com/jonhoo/haphazard", rev = "6bcebbd" }
-
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.5.5"
