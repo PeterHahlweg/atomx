@@ -1,4 +1,4 @@
-use atomx::synced;
+use atomx::signal;
 
 #[derive(Default)]
 struct Dummy { id: usize }
@@ -10,8 +10,8 @@ impl Clone for Dummy {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (mut source, mut sink) = synced::signal::create::<Dummy>();
+fn main() {
+    let (mut source, mut sink) = signal::sync::create::<Dummy>();
     source.modify(&mut |dummy| {dummy.id = 1});
 
     // run the consumer
@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 //   will give an id incrementing by 1 each cycle
                 dummy.id += 2;
             });
-            use synced::SyncState::*;
+            use signal::sync::State::*;
             match state {
                 AllGone => break,
                 Receiving => (),
@@ -52,5 +52,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     t1.join().expect("Couldn't join on the associated thread 1");
     t2.join().expect("Couldn't join on the associated thread 2");
 
-    Ok(())
 }

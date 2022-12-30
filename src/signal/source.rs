@@ -1,4 +1,4 @@
-use crate::synced::SyncState;
+use crate::signal::sync::State;
 
 use super::*;
 use loom::Arc;
@@ -18,16 +18,16 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
         }
     }
 
-    pub fn send(&mut self, signal: &T) -> SyncState {
+    pub fn send(&mut self, signal: &T) -> State {
         self.store(signal);
         self.swap();
-        SyncState::Ready
+        State::Ready
     }
 
-    pub fn modify(&mut self, closure: &mut dyn FnMut(&mut T)) -> SyncState {
+    pub fn modify(&mut self, closure: &mut dyn FnMut(&mut T)) -> State {
         closure(self.store.as_mut().expect("always valid data"));
         self.swap();
-        SyncState::Ready
+        State::Ready
     }
 
     pub(super) fn signal(&self) -> Arc<Signal<T>> {

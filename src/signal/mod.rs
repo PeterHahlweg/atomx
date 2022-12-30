@@ -1,6 +1,6 @@
 pub mod sink;
 pub mod source;
-pub mod synced;
+pub mod sync;
 pub mod loom;
 
 use haphazard::{AtomicPtr, HazardPointer};
