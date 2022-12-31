@@ -3,44 +3,26 @@
 
 # Atomx
 
-A collection of concurrent data structures, build on top of atomic types.\
-__This is experimental and not ready for production.__
+__This crate is experimental! Do not use in production.__
 
-The main reason why this crate exists is the state machine type. It provides the ability to create interconnected state machines which can run on different threads. There is no guaranty that this approach is efficient, but it provides a mechanism to synchronize threads without a lot of memory overhead. State machines are also well known, easy to understand, and reliable.\
-This state machine implementation is based on the signal types, the base building blocks for this crate. They wrap atomic types to be practical and hiding some complexity.
+## Signal
+It provides an inter thread communication channel called Signal.
+A `Signal` always has a single `Source` and one or more `Sink`'s (single producer multiple consumer,
+SPMC).
+The behavior of signal differs from known channels such that there is no fifo like behavior.
+Values are not taken out of the channel by a sink. They stay the same regardless how often they
+will be read. The only way the Signal data can change is through the Source.
+This decouples the frequency domains from the source and sinks.
+In case a synchronous behavior of the Signal is required, where all sinks need to acknowledge the changed signal value, there is the signal::sync module. It provides the same interface as the default  implementation and adds synchronization functionality. As it is assumed to be an exceptional requirement, it comes with a little more overhead.
 
-## Example - Connecting State Machines
-```Rust
-use atomx::*;
+This kind of behavior is probably useful in systems where a subsystem is processing data by sampling it's sources in a given frequency and the source signals may also run in different frequency's. Or if it is known that the source data is up to data at the time of sampling. The synced signal can be used to provide a trigger signal for multiple subsystems.
 
-// define some states
-#[derive(Clone, Copy, Debug)]
-enum TickState {Tick, Wait, Stop}
+The underlying mechanism is inspired by page flipping, where one display buffer is displayed while
+the other can be modified.
+Hazard pointers are used to protect the atomic pointer which references the sink/read buffer.
 
-// Provide conversions from state to u32 and vice versa.
-// This is important as the states are represented as u32 types internally.
-// You can also be creative here with macros and/or mapping multidimensional inputs.
-impl From<TickState> for u32 { ... }
-impl From<u32> for TickState { ... }
-
-// Transitions can be described as easy as this and always happens from the left to the right value.
-let transitions = [(Tick, Wait), (Wait, Tick)];
-
-// Create some state machines from the transitions, and define the stop state for each.
-let mut sm1 = StateMachine::from(&transitions, Stop);
-let mut sm2 = StateMachine::from(&transitions, Stop);
-
-// The connection of two state machines is not complicated, but not easily readable at the moment.
-// So, how to read this thing?
-sm1.connect(Tick, // this is the sm1 state that depends on the other state machines (sm2) state
-            &sm2, // the other state machine
-            Wait, // the state we depend on
-            Wait  // the state we go next if the other state machine is not in the state we depend on
-                  //    (this gives us the flexibility to go ahead with something else, or try again)
-);
-
-// Please find the complete source for this in the example folder.
-```
+Kudos to [jonhoo](https://github.com/jonhoo). The Signal module was inspired by his streams and is
+powered by his hazard pointer implementation ([jonhoo/haphazard](https://github.com/jonhoo/haphazard)).
 
 ## License
 Atomx is distributed under the terms of both the MIT license and the Apache License (Version 2.0).
