@@ -25,7 +25,6 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         Sink::from(self)
     }
 
-
     fn try_sync(&self) -> State {
         use State::*;
         match self.sink_count() {

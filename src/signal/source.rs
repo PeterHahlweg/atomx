@@ -1,7 +1,6 @@
 use crate::signal::sync::State;
 
-use super::*;
-use loom::Arc;
+use super::{*, loom::Arc};
 
 // Source
 pub struct Source<T:Send> {

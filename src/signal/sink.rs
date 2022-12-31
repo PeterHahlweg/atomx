@@ -1,5 +1,4 @@
-use super::*;
-use loom::Arc;
+use super::{*, loom::Arc};
 use haphazard::HazardPointer;
 
 
