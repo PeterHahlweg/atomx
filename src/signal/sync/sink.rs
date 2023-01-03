@@ -2,7 +2,6 @@ use std::{
     cell::Cell,
     sync::atomic::Ordering
 };
-use haphazard::HazardPointer;
 use crate::signal::{
     Signal,
     loom::{Arc, atomic::AtomicU32}
@@ -13,7 +12,6 @@ use super::source::Source;
 
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
     signal: Arc<Signal<T>>,
-    hp: HazardPointer<'static>,
     acks: Arc<AtomicU32>,
     last_id: Cell<u64>,
 }
@@ -25,7 +23,6 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     pub fn from(source: &Source<T>) -> Self {
         Sink {
             signal: source.inner.signal(),
-            hp: HazardPointer::new(),
             acks: source.acks.clone(),
             last_id: Cell::new(0),
         }
@@ -34,8 +31,8 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// Returns a copy of the received signal value.
     /// This is especially useful for small or primitive types. If the signal data is to expansive
     /// to copy have a look at [process].
-    pub fn receive(&mut self) -> T {
-        let (value, id) = self.signal.value(&mut self.hp);
+    pub fn receive(&self) -> T {
+        let (value, id) = self.signal.value();
         self.acknowledge(id);
         value
     }
@@ -44,8 +41,8 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// an immutable reference given by a closure. This could drastically reduce memory usage, but
     /// creates back pressure onto the sender if processing takes to much time (even if not
     /// synced).
-    pub fn process(&mut self, closure: &mut dyn FnMut(&T)) {
-        let id = self.signal.modify(&mut self.hp, closure);
+    pub fn process(&self, closure: &mut dyn FnMut(&T)) {
+        let id = self.signal.modify(closure);
         self.acknowledge(id)
     }
 

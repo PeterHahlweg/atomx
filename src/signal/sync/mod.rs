@@ -37,7 +37,7 @@ fn changed_is_true_if_create_synced() {
 
 #[test]
 fn changed_if_synced() {
-    let (mut src, mut snk) = crate::signal::sync::create::<f32>();
+    let (mut src, snk) = crate::signal::sync::create::<f32>();
     src.send(&0.0);
     snk.receive();
     assert!( ! snk.changed()); // because received latest value already

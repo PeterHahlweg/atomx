@@ -43,18 +43,19 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
         unsafe { Box::<T>::from_raw(replaced_ptr) }
     }
 
-    fn value(&self, guard: &mut HazardPointer<'static>) -> (T, u64) {
+    fn value(&self) -> (T, u64) {
         let mut val = T::default();
-        let id = self.modify(guard, &mut |value| {
+        let id = self.modify(&mut |value| {
             val = value.clone()
         });
         (val, id)
     }
 
-    fn modify(&self, guard: &mut HazardPointer<'static>, closure: &mut dyn FnMut(&T)) -> u64 {
+    fn modify(&self, closure: &mut dyn FnMut(&T)) -> u64 {
         match &self.ptr {
             Some(ptr) => {
-                let val = ptr.safe_load(guard).expect("not null");
+                let mut guard = HazardPointer::new();
+                let val = ptr.safe_load(&mut guard).expect("not null");
                 closure(val);
                 ptr.load_ptr() as u64
             }
@@ -96,8 +97,7 @@ impl<T> Debug for Signal<T> where T: Send {
 fn read_source_value() {
     let src = Signal::new(5);
     let mut counter = 0;
-    let mut guard = HazardPointer::new();
-    src.modify(&mut guard, &mut |val|{
+    src.modify(&mut |val|{
         counter += val
     });
     assert_eq!(counter, 5);
@@ -118,8 +118,8 @@ fn sink_and_source_does_not_panic_on_immediate_drop() {
 
 #[test]
 fn source_and_sinks_are_connected() {
-    let (mut source, mut sink1) = super::signal::create::<bool>();
-    let mut sink2 = source.sink();
+    let (mut source, sink1) = super::signal::create::<bool>();
+    let sink2 = source.sink();
     for i in 0..10 {
         let v = i%2 == 1;
         source.send(&v);

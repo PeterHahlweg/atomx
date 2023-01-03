@@ -11,7 +11,7 @@ impl Clone for Dummy {
 }
 
 fn main() {
-    let (mut source, mut sink) = signal::sync::create::<Dummy>();
+    let (mut source, sink) = signal::sync::create::<Dummy>();
     source.modify(&mut |dummy| {dummy.id = 1});
 
     // run the consumer
