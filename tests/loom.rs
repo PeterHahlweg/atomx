@@ -7,9 +7,9 @@ use loom::thread;
 #[test]
 fn loom_signal_ack(){
     loom::model(|| {
-        let (mut sender, mut sink1) = signal::sync::create::<f32>();
-        let mut sink2 = sender.sink();
-        let mut sink3 = sender.sink();
+        let (mut sender, sink1) = signal::sync::create::<f32>();
+        let sink2 = sender.sink();
+        let sink3 = sender.sink();
         let input1 = 0.1;
         let input2 = 0.2;
         sender.send(&input1);
