@@ -78,10 +78,8 @@ impl<T: Send> Drop for Signal<T> {
         // Safety:
         // - AtomicPtr has used the global domain, as required by haphazard::AtomicPtr::retire
         // - AtomicPtr is only used in signal
-        unsafe{ self.ptr
-            .take().expect("always some AtomicPtr")
-            .retire();
-        }
+        let aptr = self.ptr.take().expect("always some AtomicPtr");
+        unsafe{ aptr.retire() };
     }
 }
 
