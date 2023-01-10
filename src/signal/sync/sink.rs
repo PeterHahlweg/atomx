@@ -42,7 +42,7 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// creates back pressure onto the sender if processing takes to much time (even if not
     /// synced).
     pub fn process(&self, closure: &mut dyn FnMut(&T)) {
-        let id = self.signal.modify(closure);
+        let id = self.signal.process(closure);
         self.acknowledge(id)
     }
 

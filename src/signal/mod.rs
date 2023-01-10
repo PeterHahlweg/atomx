@@ -26,12 +26,12 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
         }
     }
 
-    fn swap(&self, value: Box<T>) -> Box<T> {
-        let replaced = match &self.ptr {
-            Some(ptr) => ptr.swap(value).expect("replaced box"),
+    fn swap(&self, new_box: Box<T>) -> Box<T> {
+        let replaced_box = match &self.ptr {
+            Some(ptr) => ptr.swap(new_box).expect("replaced box"),
             None => unreachable!(),
         };
-        let replaced_ptr = replaced.into_inner().as_ptr();
+        let replaced_ptr = replaced_box.into_inner().as_ptr();
 
         // Safety: - ptr can not be null as it is extracted from NotNull<T>
         //         - ptr is immediately consumed in this function
@@ -45,13 +45,13 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
 
     fn value(&self) -> (T, u64) {
         let mut val = T::default();
-        let id = self.modify(&mut |value| {
+        let id = self.process(&mut |value| {
             val = value.clone()
         });
         (val, id)
     }
 
-    fn modify(&self, closure: &mut dyn FnMut(&T)) -> u64 {
+    fn process(&self, closure: &mut dyn FnMut(&T)) -> u64 {
         match &self.ptr {
             Some(ptr) => {
                 let mut guard = HazardPointer::new();
@@ -78,8 +78,8 @@ impl<T: Send> Drop for Signal<T> {
         // Safety:
         // - AtomicPtr has used the global domain, as required by haphazard::AtomicPtr::retire
         // - AtomicPtr is only used in signal
-        let aptr = self.ptr.take().expect("always some AtomicPtr");
-        unsafe{ aptr.retire() };
+        let ptr = self.ptr.take().expect("always some AtomicPtr");
+        unsafe{ ptr.retire() };
     }
 }
 
@@ -93,9 +93,9 @@ impl<T> Debug for Signal<T> where T: Send {
 
 #[test]
 fn read_source_value() {
-    let src = Signal::new(5);
+    let signal = Signal::new(5);
     let mut counter = 0;
-    src.modify(&mut |val|{
+    signal.process(&mut |val|{
         counter += val
     });
     assert_eq!(counter, 5);

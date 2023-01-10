@@ -28,7 +28,7 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
     /// creates back pressure onto the sender if processing takes to much time (even if not
     /// synced).
     pub fn process(&self, closure: &mut dyn FnMut(&T)) {
-        self.signal.modify(closure);
+        self.signal.process(closure);
     }
 
 }
