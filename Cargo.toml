@@ -12,7 +12,7 @@ readme = "README.md"
 description = "Thread safe data structures based on atomic data types."
 
 [dependencies]
-haphazard = { git = "https://github.com/jonhoo/haphazard", rev = "6bcebbd" }
+haphazard = "0.1.5"
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.5.5"
