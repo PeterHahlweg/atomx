@@ -20,6 +20,9 @@ criterion = "0.4"
 [[bench]]
 name = "hazard_pointer_allocation"
 harness = false
+[[bench]]
+name = "signal_stress"
+harness = false
 
 [target.'cfg(loom)'.dependencies]
 loom = "0.5.5"
