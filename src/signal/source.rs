@@ -20,17 +20,28 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
     pub fn send(&mut self, signal: &T) -> State {
         self.store(signal);
         self.swap();
-        State::Ready
+        match self.sink_count() {
+            0 => State::AllGone,
+            _ => State::Ready
+        }
     }
 
     pub fn modify(&mut self, closure: &mut dyn FnMut(&mut T)) -> State {
         closure(self.store.as_mut().expect("always valid data"));
         self.swap();
-        State::Ready
+        match self.sink_count() {
+            0 => State::AllGone,
+            _ => State::Ready
+        }
     }
 
     pub(super) fn signal(&self) -> Arc<Signal<T>> {
         self.signal.clone()
+    }
+
+    fn sink_count(&self) -> u32 {
+        // the expectation here is, that this count does not change often
+        Arc::strong_count(&self.signal) as u32 -1
     }
 
     // Update the value of store, without allocating memory. The given data will be cloned once.
