@@ -64,11 +64,11 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
     }
 
     fn reset_acks(&self, acks: u32) {
-        self.acks.store(acks, Ordering::SeqCst)
+        self.acks.store(acks, Ordering::Release)
     }
 
     fn acks_count(&self) -> u32 {
-        self.acks.load(Ordering::SeqCst)
+        self.acks.load(Ordering::Acquire)
     }
 
 }

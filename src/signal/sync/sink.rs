@@ -54,7 +54,7 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     /// the signal.
     fn acknowledge(&self, id: u64) {
         if self.last_id.get() != id {
-            self.acks.fetch_sub(1, Ordering::SeqCst);
+            self.acks.fetch_sub(1, Ordering::AcqRel);
         }
         self.last_id.set(id)
     }
