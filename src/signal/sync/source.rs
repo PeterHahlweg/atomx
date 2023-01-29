@@ -56,9 +56,10 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
     pub fn modify(&mut self, closure: &mut dyn FnMut(&mut T)) -> State {
         use State::*;
         let state = self.try_sync();
+        let data = unsafe {self.inner.signal.write_ptr().as_mut().expect("always valid data")};
         if state == Ready {
-            closure(self.inner.store.as_mut().expect("always valid data"));
-            self.inner.swap();
+            closure(data);
+            self.inner.signal.swap();
         }
         state
     }

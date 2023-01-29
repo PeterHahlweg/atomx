@@ -3,7 +3,7 @@ pub mod source;
 pub mod sync;
 pub mod loom;
 
-use haphazard::{AtomicPtr, HazardPointer};
+use haphazard::{AtomicPtr, HazardPointer, raw::Pointer};
 
 pub use source::Source;
 pub use sink::Sink;
@@ -14,33 +14,51 @@ pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Defaul
     (source, sink)
 }
 
-struct Signal<T: Send> {
+struct Signal<T: Send + Default> {
     ptr: Option<AtomicPtr<T>>, // Option required to retire on drop
+    slot: [T;2],
+    id: AtomicU8,
+    _marker: PhantomPinned
 }
 
 // impl Signal
 impl<T: Clone+Default+Send+Sync> Signal<T> {
     fn new(value: T) -> Self {
-        Signal {
-            ptr: Some(AtomicPtr::from(Box::new(value)))
-        }
+        let mut signal = Signal {
+            ptr: None,
+            slot: [T::default(), value],
+            id: AtomicU8::from(1), // defult state, writer usees slot[0], reader uses slot[1]
+            _marker: PhantomPinned
+        };
+        let read_id = signal.id.load(Ordering::SeqCst) as usize;
+        let read_ptr = &mut (signal.slot[read_id]) as *mut T;
+        // Safety - ptr points to a valid memory location and this memory is pinned
+        signal.ptr = Some(AtomicPtr::from(unsafe{Box::from_raw(read_ptr)}));
+        signal
     }
 
-    fn swap(&self, new_box: Box<T>) -> Box<T> {
+    fn slot_ptr(&self, id: usize) -> *mut T {
+        let const_ptr = &(self.slot[id]) as *const T;
+        unsafe{std::mem::transmute::<*const T, *mut T>(const_ptr)}
+    }
+
+    fn write_ptr(&self) -> *mut T {
+        let write_id = (self.id.load(Ordering::SeqCst)+1) >> 1;
+        self.slot_ptr(write_id as usize)
+    }
+
+    fn swap(&self) -> *mut T {
+        // swap slot
+        let read_id = (self.id.fetch_xor(1, Ordering::AcqRel)) as usize;
+        // Safty: - this is a valid mutable pointer
+        //        - the caller has to make shure it is valid
+        let read_ptr = unsafe{Pointer::from_raw(self.slot_ptr(read_id))};
+
         let replaced_box = match &self.ptr {
-            Some(ptr) => ptr.swap(new_box).expect("replaced box"),
+            Some(ptr) => ptr.swap(read_ptr).expect("replaced box"),
             None => unreachable!(),
         };
-        let replaced_ptr = replaced_box.into_inner().as_ptr();
-
-        // Safety: - ptr can not be null as it is extracted from NotNull<T>
-        //         - ptr is immediately consumed in this function
-        //         - ptr types are matching, ensured by function signature
-        //
-        // Cost:   - no heap allocation happens here for data
-        //         - only a "empty" Box will be allocated and takes ownership of ptr and the
-        //           associated  data
-        unsafe { Box::<T>::from_raw(replaced_ptr) }
+        replaced_box.into_inner().as_ptr()
     }
 
     fn value(&self) -> (T, u64) {
@@ -73,18 +91,19 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
 }
 
 // drop Signal
-impl<T: Send> Drop for Signal<T> {
+impl<T: Send + Default> Drop for Signal<T> {
     fn drop(&mut self) {
         // Safety:
         // - AtomicPtr has used the global domain, as required by haphazard::AtomicPtr::retire
         // - AtomicPtr is only used in signal
         let ptr = self.ptr.take().expect("always some AtomicPtr");
+        ptr.swap(Box::<T>::default());
         unsafe{ ptr.retire() };
     }
 }
 
-use std::fmt::Debug;
-impl<T> Debug for Signal<T> where T: Send {
+use std::{fmt::Debug, marker::PhantomPinned, sync::atomic::{AtomicU8, Ordering}};
+impl<T> Debug for Signal<T> where T: Send + Default {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Signal").field("ptr", &self.ptr).field("guard", &"invisible").finish()
     }
@@ -137,8 +156,7 @@ fn sizes() {
     println!("Signal<u32>:       {:3}B", size_of::<Signal<u32>>());
     println!("signal cost:       {:3}B", size_of::<Signal<u32>>() +
                                          size_of::<Source<u32>>() +
-                                         size_of::<Sink<u32>>() +
-                                         (size_of::<u32>() *2)
+                                         size_of::<Sink<u32>>()
     );
 
 }
