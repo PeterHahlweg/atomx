@@ -42,23 +42,22 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
         unsafe{std::mem::transmute::<*const T, *mut T>(const_ptr)}
     }
 
-    fn write_ptr(&self) -> *mut T {
-        let write_id = (self.id.load(Ordering::SeqCst)+1) >> 1;
-        self.slot_ptr(write_id as usize)
+    fn write_ptr(&self, id: usize) -> *mut T {
+        self.slot_ptr(id)
     }
 
-    fn swap(&self) -> *mut T {
+    fn swap(&self, read_id: usize) -> usize {
         // swap slot
-        let read_id = (self.id.fetch_xor(1, Ordering::AcqRel)) as usize;
+        let write_id = read_id^1;
         // Safty: - this is a valid mutable pointer
         //        - the caller has to make shure it is valid
         let read_ptr = unsafe{Pointer::from_raw(self.slot_ptr(read_id))};
 
-        let replaced_box = match &self.ptr {
+        match &self.ptr {
             Some(ptr) => ptr.swap(read_ptr).expect("replaced box"),
             None => unreachable!(),
         };
-        replaced_box.into_inner().as_ptr()
+        write_id
     }
 
     fn value(&self) -> (T, u64) {

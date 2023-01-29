@@ -4,20 +4,22 @@ use super::{*, loom::Arc};
 
 // Source
 pub struct Source<T:Send + Default> {
-    pub(super) signal: Arc<Signal<T>>
+    pub(super) signal: Arc<Signal<T>>,
+    pub(super) id: usize,
 }
 
 // impl Source
 impl<T:Send> Source<T> where T: Clone + Sync + Default {
     pub fn from(value: T) -> Self {
         Source {
-            signal: Arc::new(Signal::new(value))
+            signal: Arc::new(Signal::new(value)),
+            id: 0
         }
     }
 
     pub fn send(&mut self, signal: &T) -> State {
         self.store(signal);
-        self.signal.swap();
+        self.id = self.signal.swap(self.id);
         match self.sink_count() {
             0 => State::AllGone,
             _ => State::Ready
@@ -25,9 +27,9 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
     }
 
     pub fn modify(&mut self, closure: &mut dyn FnMut(&mut T)) -> State {
-        let data = unsafe{self.signal.write_ptr().as_mut().expect("always valid ptr")};
+        let data = unsafe{self.signal.write_ptr(self.id).as_mut().expect("always valid ptr")};
         closure(data);
-        self.signal.swap();
+        self.id = self.signal.swap(self.id);
         match self.sink_count() {
             0 => State::AllGone,
             _ => State::Ready
@@ -45,7 +47,7 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
 
     // Update the value of store, without allocating memory. The given data will be cloned once.
     fn store(&mut self, value: &T) {
-        let data = unsafe{self.signal.write_ptr().as_mut().expect("always valid ptr")};
+        let data = unsafe{self.signal.write_ptr(self.id).as_mut().expect("always valid ptr")};
         *data = value.clone();
     }
 
