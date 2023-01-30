@@ -2,11 +2,13 @@ pub mod sink;
 pub mod source;
 pub mod sync;
 pub mod loom;
+pub mod memory;
 
-use haphazard::{AtomicPtr, HazardPointer, raw::Pointer};
+use haphazard::{AtomicPtr, HazardPointer};
 
 pub use source::Source;
 pub use sink::Sink;
+use memory::*;
 
 pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Default {
     let source = Source::from(T::default());
@@ -16,48 +18,21 @@ pub fn create<T>() -> (Source<T>, Sink<T>) where T: Send + Sync + Clone + Defaul
 
 struct Signal<T: Send + Default> {
     ptr: Option<AtomicPtr<T>>, // Option required to retire on drop
-    slot: [T;2],
-    id: AtomicU8,
-    _marker: PhantomPinned
 }
 
 // impl Signal
 impl<T: Clone+Default+Send+Sync> Signal<T> {
-    fn new(value: T) -> Self {
-        let mut signal = Signal {
-            ptr: None,
-            slot: [T::default(), value],
-            id: AtomicU8::from(1), // defult state, writer usees slot[0], reader uses slot[1]
-            _marker: PhantomPinned
-        };
-        let read_id = signal.id.load(Ordering::SeqCst) as usize;
-        let read_ptr = &mut (signal.slot[read_id]) as *mut T;
-        // Safety - ptr points to a valid memory location and this memory is pinned
-        signal.ptr = Some(AtomicPtr::from(unsafe{Box::from_raw(read_ptr)}));
-        signal
+    fn new(memory: &mut Memory<T>) -> Self {
+        Signal {
+            ptr: Some(unsafe{AtomicPtr::new(memory.read_ptr())})
+        }
     }
 
-    fn slot_ptr(&self, id: usize) -> *mut T {
-        let const_ptr = &(self.slot[id]) as *const T;
-        unsafe{std::mem::transmute::<*const T, *mut T>(const_ptr)}
-    }
-
-    fn write_ptr(&self, id: usize) -> *mut T {
-        self.slot_ptr(id)
-    }
-
-    fn swap(&self, read_id: usize) -> usize {
-        // swap slot
-        let write_id = read_id^1;
-        // Safty: - this is a valid mutable pointer
-        //        - the caller has to make shure it is valid
-        let read_ptr = unsafe{Pointer::from_raw(self.slot_ptr(read_id))};
-
-        match &self.ptr {
-            Some(ptr) => ptr.swap(read_ptr).expect("replaced box"),
-            None => unreachable!(),
-        };
-        write_id
+    fn swap(&self, memory: &mut Memory<T>) {
+        if let Some(ptr) = &self.ptr {
+            // TODO: is a retire necessary here?
+            unsafe{ptr.store_ptr(memory.swap())}
+        }
     }
 
     fn value(&self) -> (T, u64) {
@@ -101,7 +76,7 @@ impl<T: Send + Default> Drop for Signal<T> {
     }
 }
 
-use std::{fmt::Debug, marker::PhantomPinned, sync::atomic::{AtomicU8, Ordering}};
+use std::fmt::Debug;
 impl<T> Debug for Signal<T> where T: Send + Default {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Signal").field("ptr", &self.ptr).field("guard", &"invisible").finish()
@@ -111,7 +86,8 @@ impl<T> Debug for Signal<T> where T: Send + Default {
 
 #[test]
 fn read_source_value() {
-    let signal = Signal::new(5);
+    let mut memory = Memory::new(5);
+    let signal = Signal::new(&mut memory);
     let mut counter = 0;
     signal.process(&mut |val|{
         counter += val
@@ -121,7 +97,8 @@ fn read_source_value() {
 
 #[test]
 fn signal_does_not_panic_on_immediate_drop() {
-    let signal = Signal::new(false);
+    let mut memory = Memory::new(false);
+    let signal = Signal::new(&mut memory);
     drop(signal);
 }
 

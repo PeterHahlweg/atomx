@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion, black_box};
 use std::thread;
 
 fn signal_sink_read_pressure(c: &mut Criterion) {
@@ -16,7 +16,7 @@ fn signal_sink_read_pressure(c: &mut Criterion) {
     }
 
     c.bench_function("atomx::signal write/read stress test", |b| b.iter(|| {
-        source.modify(&mut |value| { *value += 1});
+        black_box(source.modify(&mut |value| { *value += 1}));
     }));
 }
 
