@@ -5,13 +5,13 @@ use super::{*, loom::Arc, memory::Memory};
 // Source
 pub struct Source<T:Send + Default> {
     pub(super) signal: Arc<Signal<T>>,
-    pub(super) memory: Memory<T>
+    pub(super) memory: Box<Memory<T>>
 }
 
 // impl Source
 impl<T:Send> Source<T> where T: Clone + Sync + Default {
     pub fn from(value: T) -> Self {
-        let mut memory = Memory::new(value);
+        let mut memory = Box::new(Memory::new(value));
         Source {
             signal: Arc::new(Signal::new(&mut memory)),
             memory
