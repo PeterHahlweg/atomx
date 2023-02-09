@@ -39,7 +39,7 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         }
     }
 
-    fn sink_count(&self) -> u32 {
+    pub fn sink_count(&self) -> u32 {
         // the expectation here is, that this count does not change often
         Arc::strong_count(&self.inner.signal) as u32 -1
     }
