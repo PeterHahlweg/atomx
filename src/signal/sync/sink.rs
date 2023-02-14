@@ -1,7 +1,4 @@
-use std::{
-    cell::Cell,
-    sync::atomic::Ordering
-};
+use std::sync::atomic::{Ordering, AtomicU64};
 use crate::signal::{
     Signal,
     loom::{Arc, atomic::AtomicU32}
@@ -9,11 +6,10 @@ use crate::signal::{
 use super::source::Source;
 
 
-#[derive(Clone)]
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
     signal: Arc<Signal<T>>,
     acks: Arc<AtomicU32>,
-    last_id: Cell<u64>,
+    last_id: AtomicU64,
 }
 
 impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
@@ -24,7 +20,7 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
         Sink {
             signal: source.inner.signal(),
             acks: source.acks.clone(),
-            last_id: Cell::new(0),
+            last_id: AtomicU64::new(0),
         }
     }
 
@@ -47,15 +43,25 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
     }
 
     pub fn changed(&self) -> bool {
-        self.signal.box_id() != self.last_id.get()
+        self.signal.box_id() != self.last_id.load(Ordering::Acquire)
     }
 
     /// When the signal is synced, this is used to inform the Sender that the Sink has been received
     /// the signal.
     fn acknowledge(&self, id: u64) {
-        if self.last_id.get() != id {
+        if self.last_id.load(Ordering::Acquire) != id {
             self.acks.fetch_sub(1, Ordering::AcqRel);
         }
-        self.last_id.set(id)
+        self.last_id.store(id, Ordering::Release)
+    }
+}
+
+impl<T> Clone for Sink<T> where T: Clone + Sync + Send + Default {
+    fn clone(&self) -> Self {
+        Self {
+            signal: self.signal.clone(),
+            acks: self.acks.clone(),
+            last_id: AtomicU64::default()
+        }
     }
 }
