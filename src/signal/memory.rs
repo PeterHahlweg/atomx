@@ -1,5 +1,7 @@
 use std::marker::PhantomPinned;
 
+use haphazard::AtomicPtr;
+
 // Memory should be boxed and pinned
 pub struct Memory<T: Default> {
     slot: [T;2],
@@ -17,27 +19,29 @@ impl<T> Memory<T> where T: Clone + Default {
         }
     }
 
-    fn slot_ptr(&mut self, id: usize) -> *mut T {
-        &mut (self.slot[id]) as *mut T
+    pub fn new_read_ptr(&mut self) -> AtomicPtr<T> {
+        unsafe{AtomicPtr::new(std::ptr::addr_of_mut!(self.slot[self.read_id]))}
     }
 
     pub fn write(&mut self, value: &T) {
-        self.slot[self.read_id ^1] = value.clone();
+        self.slot[self.write_id()] = value.clone();
     }
 
     pub fn write_in_place(&mut self, closure: &mut dyn FnMut(&mut T)) {
-        closure(&mut self.slot[self.read_id ^1])
+        closure(&mut self.slot[self.write_id()])
     }
 
-    pub fn read_ptr(&mut self) -> *mut T {
-        self.slot_ptr(self.read_id)
+    pub fn swap(&mut self, read_ptr: &AtomicPtr<T>) {
+        self.swap_read_id();
+        unsafe{read_ptr.store_ptr(std::ptr::addr_of_mut!(self.slot[self.read_id]))};
     }
 
-    /// returns read ptr
-    pub fn swap(&mut self) -> *mut T {
-        // swap slot
-        self.read_id ^= 1;
-        self.read_ptr()
+    fn write_id(&self) -> usize {
+        self.read_id ^1
+    }
+
+    fn swap_read_id(&mut self) {
+        self.read_id = self.write_id()
     }
 
 }

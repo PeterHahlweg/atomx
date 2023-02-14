@@ -24,14 +24,14 @@ struct Signal<T: Send + Default> {
 impl<T: Clone+Default+Send+Sync> Signal<T> {
     fn new(memory: &mut Memory<T>) -> Self {
         Signal {
-            ptr: Some(unsafe{AtomicPtr::new(memory.read_ptr())})
+            ptr: Some(memory.new_read_ptr())
         }
     }
 
     fn swap(&self, memory: &mut Memory<T>) {
         if let Some(ptr) = &self.ptr {
             // TODO: is a retire necessary here?
-            unsafe{ptr.store_ptr(memory.swap())}
+            memory.swap(ptr)
         }
     }
 
