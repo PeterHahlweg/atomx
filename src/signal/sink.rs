@@ -31,6 +31,10 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
         self.signal.process(closure);
     }
 
+    pub fn is_connected(&self) -> bool {
+        Arc::strong_count(&self.signal) > 0
+    }
+
 }
 
 impl<T> Clone for Sink<T> where T: Clone + Sync + Send + Default {
