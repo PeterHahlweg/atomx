@@ -1,19 +1,21 @@
 use crate::signal::sync::State;
-
 use super::{*, loom::Arc, memory::Memory};
+
+use std::pin::Pin;
 
 // Source
 pub struct Source<T:Send + Default> {
     pub(super) signal: Arc<Signal<T>>,
-    pub(super) memory: Box<Memory<T>>
+    pub(super) memory: Pin<Box<Memory<T>>>
 }
 
 // impl Source
 impl<T:Send> Source<T> where T: Clone + Sync + Default {
     pub fn from(value: T) -> Self {
-        let mut memory = Box::new(Memory::new(value));
+        let mut memory: Pin<Box<Memory<T>>> =  Memory::new(value);
+        let pointer = memory.new_read_ptr();
         Source {
-            signal: Arc::new(Signal::new(&mut memory)),
+            signal: Arc::new(Signal::new(pointer)),
             memory
         }
     }
