@@ -42,6 +42,7 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
         self.acknowledge(id)
     }
 
+    /// Check if source has changed the signal, since last acknowledge.
     pub fn changed(&self) -> bool {
         self.signal.box_id() != self.last_id.load(Ordering::Acquire)
     }

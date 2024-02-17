@@ -40,7 +40,7 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
         Arc::strong_count(&self.signal) > 0
     }
 
-    /// Check if source have changed the signal, since last acknowledge.
+    /// Check if source has changed the signal, since last read.
     pub fn changed(&self) -> bool {
        self.signal.box_id() == self.last_id.load(Ordering::Acquire)
     }
