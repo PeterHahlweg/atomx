@@ -69,12 +69,13 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
 // drop Signal
 impl<T: Send + Default> Drop for Signal<T> {
     fn drop(&mut self) {
-        // Safety:
-        // - AtomicPtr has used the global domain, as required by haphazard::AtomicPtr::retire
-        // - AtomicPtr is only used in signal
-        let ptr = self.ptr.take().expect("always some AtomicPtr");
-        ptr.swap(Box::<T>::default());
-        unsafe{ ptr.retire() };
+        if let Some(ptr) = self.ptr.take() {
+            ptr.swap(Box::<T>::default());
+            // Safety:
+            // - AtomicPtr has used the global domain, as required by haphazard::AtomicPtr::retire
+            // - AtomicPtr is only used in signal
+            unsafe{ ptr.retire() };
+        }
     }
 }
 
