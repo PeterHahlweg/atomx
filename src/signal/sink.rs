@@ -42,7 +42,7 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
 
     /// Check if source has changed the signal, since last read.
     pub fn changed(&self) -> bool {
-       self.signal.box_id() == self.last_id.load(Ordering::Acquire)
+       self.signal.box_id() != self.last_id.load(Ordering::Acquire)
     }
 
 }
