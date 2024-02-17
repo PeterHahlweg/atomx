@@ -5,7 +5,7 @@ use crate::signal::{
 };
 use super::source::Source;
 
-
+#[derive(Default)]
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
     signal: Arc<Signal<T>>,
     acks: Arc<AtomicU32>,
