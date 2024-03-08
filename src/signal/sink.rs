@@ -2,6 +2,7 @@ use super::{*, loom::{Arc, atomic::AtomicU64}};
 use std::sync::atomic::Ordering;
 
 // Sink
+#[derive(Default)]
 pub struct Sink<T> where T: Clone + Sync + Send + Default {
     signal: Arc<Signal<T>>,
     last_id: AtomicU64
