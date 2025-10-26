@@ -47,6 +47,11 @@ impl<T> Sink<T>  where T: Clone + Sync + Send + Default {
         self.signal.box_id() != self.last_id.load(Ordering::Acquire)
     }
 
+    /// Check if sink is connected.
+    pub fn is_connected(&self) -> bool {
+        Arc::strong_count(&self.signal) > 1
+    }
+
     /// When the signal is synced, this is used to inform the Sender that the Sink has been received
     /// the signal.
     fn acknowledge(&self, id: u64) {

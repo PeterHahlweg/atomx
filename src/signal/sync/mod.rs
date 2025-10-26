@@ -44,6 +44,24 @@ fn changed_if_synced() {
 }
 
 #[test]
+fn sync_sink_is_connected_when_source_exists() {
+    let (source, sink) = crate::signal::sync::create::<bool>();
+    assert!(sink.is_connected(), "Sync sink should be connected when source exists");
+    drop(source);
+}
+
+#[test]
+fn sync_sink_is_not_connected_after_source_dropped() {
+    let sink = {
+        let (source, sink) = crate::signal::sync::create::<bool>();
+        assert!(sink.is_connected(), "Sync sink should be connected when source exists");
+        drop(source);
+        sink
+    };
+    assert!(!sink.is_connected(), "Sync sink should not be connected after source is dropped");
+}
+
+#[test]
 #[ignore = "only show sizes"]
 fn sizes() {
     use crate::signal::sync::{Source, Sink};

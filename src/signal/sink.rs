@@ -38,7 +38,7 @@ impl<T> Sink<T> where T: Clone + Sync + Send + Default {
 
     /// Check if sink is connected.
     pub fn is_connected(&self) -> bool {
-        Arc::strong_count(&self.signal) > 0
+        Arc::strong_count(&self.signal) > 1
     }
 
     /// Check if source has changed the signal, since last read.

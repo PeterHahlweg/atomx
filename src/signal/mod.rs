@@ -32,7 +32,7 @@ impl<T: Clone+Default+Send+Sync> Signal<T> {
 
     fn swap(&self, memory: &mut Pin<Box<Memory<T>>>) {
         if let Some(ptr) = &self.ptr {
-            // TODO: is a retire necessary here?
+            // No retire needed here - we're just toggling between pre-allocated slots
             memory.swap(ptr)
         }
     }
@@ -102,6 +102,24 @@ fn signal_does_not_panic_on_immediate_drop() {
     let mut memory = Memory::new(false);
     let signal = Signal::new(memory.new_read_ptr());
     drop(signal);
+}
+
+#[test]
+fn sink_is_connected_when_source_exists() {
+    let (source, sink) = super::signal::create::<bool>();
+    assert!(sink.is_connected(), "Sink should be connected when source exists");
+    drop(source);
+}
+
+#[test]
+fn sink_is_not_connected_after_source_dropped() {
+    let sink = {
+        let (source, sink) = super::signal::create::<bool>();
+        assert!(sink.is_connected(), "Sink should be connected when source exists");
+        drop(source);
+        sink
+    };
+    assert!(!sink.is_connected(), "Sink should not be connected after source is dropped");
 }
 
 #[test]
