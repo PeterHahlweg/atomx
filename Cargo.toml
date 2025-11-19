@@ -1,6 +1,6 @@
 [package]
 name = "atomx"
-version = "0.2.7"
+version = "0.2.8"
 authors = ["Peter Hahlweg <peter.github@mailbox.org>"]
 edition = "2018"
 license = "Apache-2.0 OR MIT"
@@ -10,6 +10,9 @@ keywords = ["parallel", "thread", "concurrency", "atomic"]
 categories = ["concurrency"]
 readme = "README.md"
 description = "Thread safe data structures based on atomic data types."
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 
 [dependencies]
 haphazard = "0.1.5"
