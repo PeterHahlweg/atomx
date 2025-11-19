@@ -59,6 +59,11 @@ impl<T:Send> Source<T> where T: Clone + Sync + Default {
     pub fn sink(&self) -> Sink<T> {
         Sink::from(self)
     }
+
+    /// Check if the given data equals the last published data.
+    pub fn equals_last(&self, data: &T) -> bool where T: PartialEq {
+        self.memory.equals_current(data)
+    }
 }
 
 

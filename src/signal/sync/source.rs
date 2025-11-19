@@ -71,4 +71,9 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         self.acks.load(Ordering::Acquire)
     }
 
+    /// Check if the given data equals the last published data.
+    pub fn equals_last(&self, data: &T) -> bool where T: PartialEq {
+        self.inner.equals_last(data)
+    }
+
 }

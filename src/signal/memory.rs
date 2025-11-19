@@ -65,4 +65,9 @@ impl<T> Memory<T> where T: Clone + Default {
         self.read_id = self.write_id()
     }
 
+    /// Compare the given value with the current read slot.
+    pub fn equals_current(&self, value: &T) -> bool where T: PartialEq {
+        &self.slot[self.read_id] == value
+    }
+
 }
