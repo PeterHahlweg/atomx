@@ -1,6 +1,6 @@
 [package]
 name = "atomx"
-version = "0.2.8"
+version = "0.2.9"
 authors = ["Peter Hahlweg <peter.github@mailbox.org>"]
 edition = "2018"
 license = "Apache-2.0 OR MIT"

@@ -78,14 +78,20 @@ fn sync_equals_last_returns_true_on_initial_default() {
 }
 
 #[test]
-fn sync_equals_last_returns_false_after_different_data() {
-    let (mut source, _sink) = signal::sync::create::<TestData>();
+fn sync_equals_last_returns_false_when_receiving() {
+    let (mut source, sink) = signal::sync::create::<TestData>();
     let first = TestData { value: 42 };
     let second = TestData { value: 99 };
 
+    // After send, we are in Receiving state - equals_last returns false
     source.send(&first);
-    assert!(source.equals_last(&first));
-    assert!(!source.equals_last(&second));
+    assert!(!source.equals_last(&first));  // Receiving: always false
+    assert!(!source.equals_last(&second)); // Receiving: always false
+
+    // After sink acknowledges, we are Ready - equals_last works normally
+    sink.process(&mut |_| {});
+    assert!(source.equals_last(&first));   // Ready: compares with buffer
+    assert!(!source.equals_last(&second)); // Ready: compares with buffer
 }
 
 #[test]

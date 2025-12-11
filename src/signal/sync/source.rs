@@ -17,7 +17,7 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
     pub fn from(value: T) -> Self {
         Source {
             inner: crate::signal::Source::from(value),
-            acks: Arc::new(AtomicU32::new(0)),
+            acks: Arc::new(AtomicU32::new(u32::MAX)),
         }
     }
 
@@ -29,11 +29,11 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
         use State::*;
         match self.sink_count() {
             1.. => match self.acks_count() {
-                1.. => Receiving,
-                0   => {
+                0 | u32::MAX => {
                     self.reset_acks(self.sink_count());
                     Ready
                 }
+                _ => Receiving,
             },
             0   => AllGone
         }
@@ -72,8 +72,18 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
     }
 
     /// Check if the given data equals the last published data.
+    /// Returns false when waiting for acknowledgements or when never sent yet,
+    /// to ensure the sync state machine can progress.
     pub fn equals_last(&self, data: &T) -> bool where T: PartialEq {
-        self.inner.equals_last(data)
+        // Check state without side effects (try_sync resets acks)
+        // acks == u32::MAX means never sent, acks == 0 means all acked and ready
+        match self.sink_count() {
+            0 => true,  // AllGone: no receivers, skip sending
+            _ => match self.acks_count() {
+                0 => self.inner.equals_last(data),  // Ready: all acked, safe to compare
+                _ => false,  // Receiving or never sent: do not skip send
+            }
+        }
     }
 
 }
