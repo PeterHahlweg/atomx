@@ -75,14 +75,12 @@ impl<T> Source<T> where T: Clone + Sync + Send + Default {
     /// Returns false when waiting for acknowledgements or when never sent yet,
     /// to ensure the sync state machine can progress.
     pub fn equals_last(&self, data: &T) -> bool where T: PartialEq {
-        // Check state without side effects (try_sync resets acks)
-        // acks == u32::MAX means never sent, acks == 0 means all acked and ready
+        // no need to check state if values are different (avoid atomic loads)
+        if !self.inner.equals_last(data) {return false}
+        // check if we still need to send for state machine
         match self.sink_count() {
             0 => true,  // AllGone: no receivers, skip sending
-            _ => match self.acks_count() {
-                0 => self.inner.equals_last(data),  // Ready: all acked, safe to compare
-                _ => false,  // Receiving or never sent: do not skip send
-            }
+            _ => self.acks_count() == 0,  // Only skip if Ready (all acked)
         }
     }
 
